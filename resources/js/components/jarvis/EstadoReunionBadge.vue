@@ -14,6 +14,11 @@ const etiqueta = computed(() => {
                 texto: 'Grabando',
                 clase: 'border-rose-500/40 text-rose-500',
             };
+        case 'pausada':
+            return {
+                texto: 'En pausa',
+                clase: 'border-amber-500/40 text-amber-600 dark:text-amber-300',
+            };
         case 'procesando':
             return {
                 texto: reunion.transcripcion_lista

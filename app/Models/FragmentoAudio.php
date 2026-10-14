@@ -22,11 +22,12 @@ use Illuminate\Support\Carbon;
  * @property EstadoFragmento $estado
  * @property int $intentos
  * @property string|null $error
+ * @property array{tema: string, resumen: string, puntos: list<string>}|null $resumen
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
 #[Table('fragmentos_audio')]
-#[Fillable(['orden', 'ruta_archivo', 'mime', 'tamano_bytes', 'duracion_segundos', 'estado', 'intentos', 'error'])]
+#[Fillable(['orden', 'ruta_archivo', 'mime', 'tamano_bytes', 'duracion_segundos', 'estado', 'intentos', 'error', 'resumen'])]
 class FragmentoAudio extends Model
 {
     use HasUlids;
@@ -40,6 +41,7 @@ class FragmentoAudio extends Model
     {
         return [
             'estado' => EstadoFragmento::class,
+            'resumen' => 'array',
         ];
     }
 
@@ -57,6 +59,20 @@ class FragmentoAudio extends Model
     public function segmentos(): HasMany
     {
         return $this->hasMany(SegmentoTranscripcion::class, 'fragmento_id');
+    }
+
+    /**
+     * Lo dicho en este tramo, con minuto de la reunión y hablante.
+     */
+    public function transcripcionComoTexto(): string
+    {
+        return $this->segmentos()->orderBy('orden')->get()->map(function (SegmentoTranscripcion $segmento) {
+            $segundos = (int) $segmento->inicio_segundos;
+            $minuto = sprintf('%02d:%02d', intdiv($segundos, 60), $segundos % 60);
+            $hablante = $segmento->hablante ? "Hablante {$segmento->hablante}" : 'Hablante';
+
+            return "[{$minuto}] {$hablante}: {$segmento->texto}";
+        })->implode("\n");
     }
 
     /**

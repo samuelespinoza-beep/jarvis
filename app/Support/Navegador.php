@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Closure;
 use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\UriResolver;
 use Illuminate\Http\Client\Response;
@@ -17,6 +18,13 @@ use Psr\Http\Message\UriInterface;
  */
 class Navegador
 {
+    /**
+     * Resolución DNS reemplazable en los tests, para no depender de internet.
+     *
+     * @var (Closure(string): list<string>)|null
+     */
+    public static ?Closure $resolverDns = null;
+
     private const AGENTE = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36';
 
     /**
@@ -52,7 +60,8 @@ class Navegador
             throw new InvalidArgumentException('Solo se pueden visitar direcciones http o https.');
         }
 
-        $ips = gethostbynamel($uri->getHost()) ?: [];
+        $resolver = static::$resolverDns ?? fn (string $host) => gethostbynamel($host) ?: [];
+        $ips = $resolver($uri->getHost());
 
         if ($ips === []) {
             throw new InvalidArgumentException("No se encontró el sitio {$uri->getHost()}.");

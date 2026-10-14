@@ -21,6 +21,7 @@ class EspejoReunion
             'titulo' => $reunion->titulo,
             'estado' => $reunion->estado->value,
             'iniciada_en' => $reunion->iniciada_en->toIso8601String(),
+            'pausada_en' => $reunion->pausada_en?->toIso8601String(),
             'finalizada_en' => $reunion->finalizada_en?->toIso8601String(),
             'duracion_segundos' => $reunion->duracion_segundos,
             'creada_por' => [

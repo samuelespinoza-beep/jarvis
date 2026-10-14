@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { store as subirFragmento } from '@/actions/App/Http/Controllers/FragmentoAudioController';
 import {
     store as crearReunion,
+    pausar as pausarReunion,
+    reanudar as reanudarReunion,
     terminar as terminarReunion,
 } from '@/actions/App/Http/Controllers/ReunionController';
 import type { ConfigGrabacion, Reunion } from '@/types';
@@ -11,8 +13,21 @@ export type EstadoGrabadora =
     | 'inactivo'
     | 'iniciando'
     | 'escuchando'
+    | 'pausando'
+    | 'pausado'
+    | 'reanudando'
     | 'terminando'
     | 'subida-pendiente';
+
+// Estados en los que salir de la página cortaría una grabación o una subida.
+const ESTADOS_OCUPADOS: EstadoGrabadora[] = [
+    'iniciando',
+    'escuchando',
+    'pausando',
+    'reanudando',
+    'terminando',
+    'subida-pendiente',
+];
 
 export type EstadoSubida = 'pendiente' | 'subiendo' | 'subido' | 'error';
 
@@ -72,13 +87,18 @@ async function post<T>(url: string, data?: FormData | object): Promise<T> {
 /**
  * Graba el micrófono en fragmentos independientes (cada uno es un archivo de
  * audio completo) y los sube en orden al servidor mientras la reunión sigue.
+ * Una reunión puede pausarse y reanudarse varias veces antes de terminarla.
+ *
+ * @param abierta Reunión que quedó abierta (en pausa o tras cerrar el navegador).
  */
-export function useGrabadora(config: ConfigGrabacion) {
+export function useGrabadora(config: ConfigGrabacion, abierta: Reunion | null) {
     const estado = ref<EstadoGrabadora>('inactivo');
     const reunion = ref<Reunion | null>(null);
     const subidas = ref<Subida[]>([]);
     const error = ref<string | null>(null);
     const analizador = shallowRef<AnalyserNode | null>(null);
+    // Micrófono activo, para compartirlo con la transcripción en vivo.
+    const microfono = shallowRef<MediaStream | null>(null);
     const ahora = ref(Date.now());
 
     let stream: MediaStream | null = null;
@@ -92,24 +112,32 @@ export function useGrabadora(config: ConfigGrabacion) {
     let formato = '';
     let cola: FragmentoEnCola[] = [];
     let procesandoCola: Promise<void> | null = null;
+    // Segundos grabados antes del tramo actual y momento en que empezó el tramo.
+    let segundosPrevios = 0;
+    let inicioTramo = 0;
+    // Qué hacer al presionar "Reintentar" si falló una subida.
+    let accionPendiente: 'pausar' | 'terminar' = 'terminar';
 
+    if (abierta) {
+        reunion.value = abierta;
+        ultimoOrden = abierta.fragmentos_subidos ?? 0;
+        segundosPrevios = abierta.segundos_grabados ?? 0;
+        estado.value = 'pausado';
+    }
+
+    // Tiempo grabado, sin contar las pausas.
     const segundos = computed(() => {
-        if (!reunion.value) {
-            return 0;
-        }
+        const tramo =
+            estado.value === 'escuchando'
+                ? Math.max(0, Math.floor((ahora.value - inicioTramo) / 1000))
+                : 0;
 
-        return Math.max(
-            0,
-            Math.floor(
-                (ahora.value - new Date(reunion.value.iniciada_en).getTime()) /
-                    1000,
-            ),
-        );
+        return segundosPrevios + tramo;
     });
 
     const hayTrabajoPendiente = computed(
         () =>
-            estado.value !== 'inactivo' ||
+            ESTADOS_OCUPADOS.includes(estado.value) ||
             subidas.value.some((subida) => subida.estado !== 'subido'),
     );
 
@@ -274,6 +302,7 @@ export function useGrabadora(config: ConfigGrabacion) {
             },
         });
 
+        microfono.value = stream;
         contextoAudio = new AudioContext();
         const nodo = contextoAudio.createAnalyser();
         nodo.fftSize = 256;
@@ -300,16 +329,50 @@ export function useGrabadora(config: ConfigGrabacion) {
         contextoAudio = null;
         bloqueoPantalla = null;
         analizador.value = null;
+        microfono.value = null;
+    }
+
+    function mensajeDeError(e: unknown, porDefecto: string): string {
+        const respuesta = respuestaDeError(e);
+
+        return (
+            (respuesta && leerJson<{ message?: string }>(respuesta)?.message) ||
+            porDefecto
+        );
+    }
+
+    async function empezarTramo() {
+        grabador = nuevoGrabador();
+        intervaloFragmento = window.setInterval(
+            rotarFragmento,
+            config.fragmentoSegundos * 1000,
+        );
+        intervaloReloj = window.setInterval(
+            () => (ahora.value = Date.now()),
+            1000,
+        );
+        inicioTramo = Date.now();
+        ahora.value = inicioTramo;
+        await mantenerPantallaEncendida();
+        estado.value = 'escuchando';
     }
 
     /**
-     * Botón "Escuchar". Si se pasa una reunión existente (por ejemplo, tras
-     * cerrar el navegador por accidente) se continúa grabando en ella.
+     * Cierra el fragmento en curso y suelta el micrófono.
      */
-    async function escuchar(opciones: {
-        titulo?: string;
-        continuar?: Reunion;
-    }) {
+    async function detenerTramo() {
+        window.clearInterval(intervaloFragmento);
+        grabador?.stop();
+        await detencionGrabador;
+        grabador = null;
+        segundosPrevios += Math.floor((Date.now() - inicioTramo) / 1000);
+        liberarMicrofono();
+    }
+
+    /**
+     * Botón "Escuchar": crea una reunión nueva y empieza a grabar.
+     */
+    async function escuchar(titulo?: string) {
         if (estado.value !== 'inactivo') {
             return;
         }
@@ -329,46 +392,115 @@ export function useGrabadora(config: ConfigGrabacion) {
         }
 
         try {
-            if (opciones.continuar) {
-                reunion.value = opciones.continuar;
-                ultimoOrden = opciones.continuar.fragmentos_subidos ?? 0;
-            } else {
-                const respuesta = await post<{ reunion: Reunion }>(
-                    crearReunion.url(),
-                    { titulo: opciones.titulo || null },
-                );
-                reunion.value = respuesta.reunion;
-                ultimoOrden = 0;
-            }
+            const respuesta = await post<{ reunion: Reunion }>(
+                crearReunion.url(),
+                { titulo: titulo || null },
+            );
+            reunion.value = respuesta.reunion;
         } catch (e) {
             liberarMicrofono();
             estado.value = 'inactivo';
-            const respuesta = respuestaDeError(e);
-            error.value =
-                (respuesta &&
-                    leerJson<{ message?: string }>(respuesta)?.message) ||
-                'No se pudo iniciar la reunión.';
+            error.value = mensajeDeError(e, 'No se pudo iniciar la reunión.');
 
             return;
         }
 
+        ultimoOrden = 0;
+        segundosPrevios = 0;
         subidas.value = [];
         cola = [];
-        grabador = nuevoGrabador();
-        intervaloFragmento = window.setInterval(
-            rotarFragmento,
-            config.fragmentoSegundos * 1000,
-        );
-        intervaloReloj = window.setInterval(
-            () => (ahora.value = Date.now()),
-            1000,
-        );
-        ahora.value = Date.now();
-        await mantenerPantallaEncendida();
-        estado.value = 'escuchando';
+        await empezarTramo();
+    }
+
+    /**
+     * Botón "Pausar": deja de grabar pero la reunión sigue abierta.
+     */
+    async function pausar() {
+        if (estado.value !== 'escuchando') {
+            return;
+        }
+
+        estado.value = 'pausando';
+        await detenerTramo();
+        await confirmarPausa();
+    }
+
+    async function confirmarPausa() {
+        accionPendiente = 'pausar';
+        await procesarCola();
+
+        if (cola.length > 0) {
+            estado.value = 'subida-pendiente';
+            error.value =
+                'Hay fragmentos sin subir. Revisa que el servidor esté encendido y presiona "Reintentar".';
+
+            return;
+        }
+
+        try {
+            const respuesta = await post<{ reunion: Reunion }>(
+                pausarReunion.url(reunion.value!.id),
+            );
+            reunion.value = respuesta.reunion;
+            segundosPrevios =
+                respuesta.reunion.segundos_grabados ?? segundosPrevios;
+            estado.value = 'pausado';
+            error.value = null;
+        } catch (e) {
+            estado.value = 'subida-pendiente';
+            error.value = mensajeDeError(
+                e,
+                'No se pudo pausar la reunión. Presiona "Reintentar".',
+            );
+        }
+    }
+
+    /**
+     * Botón "Reanudar": vuelve a grabar en la misma reunión.
+     */
+    async function reanudar() {
+        if (estado.value !== 'pausado' || !reunion.value) {
+            return;
+        }
+
+        error.value = null;
+        estado.value = 'reanudando';
+
+        try {
+            await prepararMicrofono();
+        } catch {
+            liberarMicrofono();
+            estado.value = 'pausado';
+            error.value =
+                'No se pudo acceder al micrófono. Revisa que el navegador tenga permiso.';
+
+            return;
+        }
+
+        try {
+            const respuesta = await post<{ reunion: Reunion }>(
+                reanudarReunion.url(reunion.value.id),
+            );
+            reunion.value = respuesta.reunion;
+            ultimoOrden = Math.max(
+                ultimoOrden,
+                respuesta.reunion.fragmentos_subidos ?? 0,
+            );
+            segundosPrevios =
+                respuesta.reunion.segundos_grabados ?? segundosPrevios;
+        } catch (e) {
+            liberarMicrofono();
+            estado.value = 'pausado';
+            error.value = mensajeDeError(e, 'No se pudo reanudar la reunión.');
+
+            return;
+        }
+
+        await empezarTramo();
     }
 
     async function cerrarReunionEnServidor() {
+        accionPendiente = 'terminar';
         estado.value = 'terminando';
 
         await procesarCola();
@@ -392,39 +524,28 @@ export function useGrabadora(config: ConfigGrabacion) {
                 : (respuesta.reunion ?? null);
             estado.value = 'inactivo';
             error.value = null;
-        } catch {
+            segundosPrevios = 0;
+            subidas.value = [];
+        } catch (e) {
             estado.value = 'subida-pendiente';
-            error.value =
-                'No se pudo cerrar la reunión en el servidor. Presiona "Reintentar".';
+            error.value = mensajeDeError(
+                e,
+                'No se pudo cerrar la reunión en el servidor. Presiona "Reintentar".',
+            );
         }
     }
 
     /**
-     * Botón "Terminar": cierra el último fragmento, espera a que todos suban y
-     * recién entonces marca la reunión como terminada.
+     * Botón "Terminar reunión": funciona grabando o en pausa. Cierra el último
+     * fragmento, espera a que todos suban y recién entonces cierra la reunión.
      */
     async function terminar() {
-        if (estado.value !== 'escuchando') {
+        if (estado.value === 'escuchando') {
+            estado.value = 'terminando';
+            await detenerTramo();
+        } else if (estado.value !== 'pausado') {
             return;
         }
-
-        estado.value = 'terminando';
-        window.clearInterval(intervaloFragmento);
-        grabador?.stop();
-        await detencionGrabador;
-        grabador = null;
-        liberarMicrofono();
-
-        await cerrarReunionEnServidor();
-    }
-
-    /**
-     * Termina una reunión que quedó abierta sin estar grabándola ahora.
-     */
-    async function terminarSinGrabar(pendiente: Reunion) {
-        reunion.value = pendiente;
-        subidas.value = [];
-        cola = [];
 
         await cerrarReunionEnServidor();
     }
@@ -435,7 +556,13 @@ export function useGrabadora(config: ConfigGrabacion) {
         }
 
         error.value = null;
-        await cerrarReunionEnServidor();
+
+        if (accionPendiente === 'pausar') {
+            estado.value = 'pausando';
+            await confirmarPausa();
+        } else {
+            await cerrarReunionEnServidor();
+        }
     }
 
     function avisarAntesDeSalir(evento: BeforeUnloadEvent) {
@@ -452,7 +579,7 @@ export function useGrabadora(config: ConfigGrabacion) {
             if (
                 hayTrabajoPendiente.value &&
                 !window.confirm(
-                    'Jarvis está grabando o subiendo audio. Si sales de esta página se detendrá la grabación. ¿Salir de todas formas?',
+                    'Jarvis está grabando o subiendo audio. Si sales de esta página se perderá el último tramo. ¿Salir de todas formas?',
                 )
             ) {
                 evento.preventDefault();
@@ -474,10 +601,12 @@ export function useGrabadora(config: ConfigGrabacion) {
         subidas,
         error,
         analizador,
+        microfono,
         segundos,
         escuchar,
+        pausar,
+        reanudar,
         terminar,
-        terminarSinGrabar,
         reintentar,
     };
 }

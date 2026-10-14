@@ -31,11 +31,11 @@ class ReunionController extends Controller
             'titulo' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $activa = Reunion::query()->where('estado', EstadoReunion::Grabando)->first();
+        $activa = Reunion::query()->whereIn('estado', EstadoReunion::abiertos())->first();
 
         if ($activa) {
             return response()->json([
-                'message' => 'Ya hay una reunión en curso. Termínala antes de iniciar otra.',
+                'message' => 'Ya hay una reunión abierta. Reanúdala o termínala antes de iniciar otra.',
                 'reunion' => (new ReunionResource($activa))->resolve(),
             ], 409);
         }
@@ -62,13 +62,25 @@ class ReunionController extends Controller
     {
         $reunion->loadCount('fragmentos');
 
+        $inicio = 0;
+
         return response()->json([
             'reunion' => (new ReunionResource($reunion))->resolve(),
-            'fragmentos' => $reunion->fragmentos()->get()->map(fn (FragmentoAudio $fragmento) => [
-                'orden' => $fragmento->orden,
-                'estado' => $fragmento->estado->value,
-                'error' => $fragmento->error,
-            ]),
+            // También es la línea de tiempo: cada tramo con su minuto de inicio y su resumen corto.
+            'fragmentos' => $reunion->fragmentos()->get()->map(function (FragmentoAudio $fragmento) use (&$inicio) {
+                $tramo = [
+                    'orden' => $fragmento->orden,
+                    'estado' => $fragmento->estado->value,
+                    'error' => $fragmento->error,
+                    'inicio_segundos' => $inicio,
+                    'duracion_segundos' => $fragmento->duracion_segundos,
+                    'resumen' => $fragmento->resumen,
+                ];
+
+                $inicio += $fragmento->duracion_segundos;
+
+                return $tramo;
+            }),
             'resumen' => $reunion->estado === EstadoReunion::Completada
                 ? $reunion->resumen?->contenido
                 : null,
@@ -76,12 +88,44 @@ class ReunionController extends Controller
     }
 
     /**
-     * Termina la reunión (botón "Terminar"). El navegador lo llama después de
-     * haber subido el último fragmento.
+     * Pausa la reunión (botón "Pausar"): deja de grabar, pero la reunión sigue
+     * abierta para reanudarla más tarde.
+     */
+    public function pausar(Reunion $reunion): JsonResponse
+    {
+        if ($reunion->estado !== EstadoReunion::Grabando) {
+            return response()->json(['message' => 'La reunión no está grabando.'], 409);
+        }
+
+        $reunion->update(['estado' => EstadoReunion::Pausada, 'pausada_en' => now()]);
+        $this->espejo->guardar($reunion);
+
+        return $this->respuesta($reunion);
+    }
+
+    /**
+     * Vuelve a grabar en la misma reunión (botón "Reanudar"). También sirve para
+     * retomar una reunión que quedó grabando porque se cerró el navegador.
+     */
+    public function reanudar(Reunion $reunion): JsonResponse
+    {
+        if (! $reunion->estado->estaAbierta()) {
+            return response()->json(['message' => 'La reunión ya fue terminada.'], 409);
+        }
+
+        $reunion->update(['estado' => EstadoReunion::Grabando, 'pausada_en' => null]);
+        $this->espejo->guardar($reunion);
+
+        return $this->respuesta($reunion);
+    }
+
+    /**
+     * Termina la reunión (botón "Terminar reunión"), esté grabando o en pausa.
+     * El navegador lo llama después de haber subido el último fragmento.
      */
     public function terminar(Reunion $reunion): JsonResponse
     {
-        if ($reunion->estado !== EstadoReunion::Grabando) {
+        if (! $reunion->estado->estaAbierta()) {
             return response()->json([
                 'message' => 'La reunión ya fue terminada.',
                 'reunion' => (new ReunionResource($reunion))->resolve(),
@@ -98,6 +142,7 @@ class ReunionController extends Controller
 
         $reunion->update([
             'estado' => EstadoReunion::Procesando,
+            'pausada_en' => null,
             'finalizada_en' => now(),
             'duracion_segundos' => (int) $reunion->fragmentos()->sum('duracion_segundos'),
         ]);
@@ -158,5 +203,12 @@ class ReunionController extends Controller
         return response()->json([
             'reunion' => (new ReunionResource($reunion->refresh()->loadCount('fragmentos')))->resolve(),
         ]);
+    }
+
+    private function respuesta(Reunion $reunion): JsonResponse
+    {
+        $reunion->loadCount('fragmentos')->loadSum('fragmentos', 'duracion_segundos');
+
+        return response()->json(['reunion' => (new ReunionResource($reunion))->resolve()]);
     }
 }

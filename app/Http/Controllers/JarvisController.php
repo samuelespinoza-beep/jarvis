@@ -13,13 +13,14 @@ class JarvisController extends Controller
     public function __invoke(): Response
     {
         $reunionActiva = Reunion::query()
-            ->where('estado', EstadoReunion::Grabando)
+            ->whereIn('estado', EstadoReunion::abiertos())
             ->withCount('fragmentos')
+            ->withSum('fragmentos', 'duracion_segundos')
             ->latest('iniciada_en')
             ->first();
 
         $ultimaReunion = Reunion::query()
-            ->where('estado', '!=', EstadoReunion::Grabando)
+            ->whereNotIn('estado', EstadoReunion::abiertos())
             ->withCount('fragmentos')
             ->latest('iniciada_en')
             ->first();
@@ -30,6 +31,7 @@ class JarvisController extends Controller
             'grabacion' => [
                 'fragmentoSegundos' => config('jarvis.fragmento_segundos'),
                 'audioBitsPorSegundo' => config('jarvis.audio_bits_por_segundo'),
+                'enVivo' => config('jarvis.en_vivo.habilitada'),
             ],
         ]);
     }

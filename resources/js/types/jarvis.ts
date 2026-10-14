@@ -1,14 +1,21 @@
-export type EstadoReunion = 'grabando' | 'procesando' | 'completada' | 'error';
+export type EstadoReunion =
+    | 'grabando'
+    | 'pausada'
+    | 'procesando'
+    | 'completada'
+    | 'error';
 
 export type Reunion = {
     id: string;
     titulo: string | null;
     estado: EstadoReunion;
     iniciada_en: string;
+    pausada_en: string | null;
     finalizada_en: string | null;
     duracion_segundos: number | null;
     transcripcion_lista: boolean;
     fragmentos_subidos?: number;
+    segundos_grabados?: number;
 };
 
 export type EstadoFragmento =
@@ -32,6 +39,7 @@ export type SegmentoTranscripcion = {
 export type ConfigGrabacion = {
     fragmentoSegundos: number;
     audioBitsPorSegundo: number;
+    enVivo: boolean;
 };
 
 export type PuntoResumen = {
@@ -56,4 +64,13 @@ export type ContenidoResumen = {
     pendientes: string[];
     riesgos_o_puntos_criticos: string[];
     sugerencias_de_mejora: string[];
+};
+
+export type TramoReunion = {
+    orden: number;
+    estado: EstadoFragmento;
+    error: string | null;
+    inicio_segundos: number;
+    duracion_segundos: number;
+    resumen: { tema: string; resumen: string; puntos: string[] } | null;
 };

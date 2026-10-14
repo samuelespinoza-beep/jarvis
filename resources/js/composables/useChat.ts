@@ -1,5 +1,6 @@
 import { http } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
+import type { Ref } from 'vue';
 import {
     enviar as enviarMensaje,
     mensajes as cargarMensajes,
@@ -36,20 +37,35 @@ function tokenXsrf(): string {
 /**
  * Chat con Jarvis. La respuesta llega como eventos SSE y se va escribiendo
  * a medida que el modelo la genera.
+ *
+ * Con una reunión abierta, el chat es el de esa reunión: al empezar otra o
+ * terminarla, el chat se reinicia.
  */
-export function useChat() {
+export function useChat(reunionId: Ref<string | null>) {
     const mensajes = ref<MensajeChat[]>([]);
     const conversacionId = ref<string | null>(null);
     const enviando = ref(false);
     const error = ref<string | null>(null);
 
     async function cargar() {
+        const reunion = reunionId.value;
+
+        if (!reunion) {
+            return;
+        }
+
         try {
             const respuesta = await http.getClient().request({
                 method: 'get',
-                url: cargarMensajes.url(),
+                url: cargarMensajes.url({ query: { reunion } }),
                 headers: { Accept: 'application/json' },
             });
+
+            // Si mientras cargaba cambió la reunión, esta respuesta ya no sirve.
+            if (reunion !== reunionId.value) {
+                return;
+            }
+
             const datos = JSON.parse(respuesta.data) as {
                 conversacion_id: string | null;
                 mensajes: MensajeChat[];
@@ -101,6 +117,7 @@ export function useChat() {
                 },
                 body: JSON.stringify({
                     mensaje,
+                    reunion_id: reunionId.value,
                     conversacion_id: conversacionId.value,
                 }),
             });
@@ -164,7 +181,23 @@ export function useChat() {
         }
     }
 
-    return { mensajes, conversacionId, enviando, error, cargar, nueva, enviar };
+    function reiniciar() {
+        conversacionId.value = null;
+        mensajes.value = [];
+        error.value = null;
+        enviando.value = false;
+    }
+
+    watch(
+        reunionId,
+        () => {
+            reiniciar();
+            void cargar();
+        },
+        { immediate: true },
+    );
+
+    return { mensajes, conversacionId, enviando, error, nueva, enviar };
 }
 
 async function leerEventos(

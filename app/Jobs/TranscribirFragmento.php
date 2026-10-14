@@ -40,6 +40,10 @@ class TranscribirFragmento implements ShouldQueue
             ]);
 
             $this->guardar($fragmento, $this->transcribir($fragmento));
+
+            if (config('jarvis.resumen.por_tramos')) {
+                ResumirTramo::dispatch($fragmento);
+            }
         }
 
         $cierre->verificar($fragmento->reunion);

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Enums\EstadoFragmento;
-use App\Enums\EstadoReunion;
 use App\Http\Requests\GuardarFragmentoRequest;
 use App\Jobs\TranscribirFragmento;
 use App\Models\Reunion;
@@ -19,8 +18,9 @@ class FragmentoAudioController extends Controller
      */
     public function store(GuardarFragmentoRequest $request, Reunion $reunion): JsonResponse
     {
-        if ($reunion->estado !== EstadoReunion::Grabando) {
-            return response()->json(['message' => 'La reunión ya no está grabando.'], 409);
+        // También se aceptan fragmentos en pausa: el último tramo puede llegar después de pausar.
+        if (! $reunion->estado->estaAbierta()) {
+            return response()->json(['message' => 'La reunión ya fue terminada.'], 409);
         }
 
         $orden = $request->integer('orden');

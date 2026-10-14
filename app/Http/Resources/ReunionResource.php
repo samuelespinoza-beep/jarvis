@@ -23,10 +23,13 @@ class ReunionResource extends JsonResource
             'titulo' => $this->titulo,
             'estado' => $this->estado->value,
             'iniciada_en' => $this->iniciada_en->toIso8601String(),
+            'pausada_en' => $this->pausada_en?->toIso8601String(),
             'finalizada_en' => $this->finalizada_en?->toIso8601String(),
             'duracion_segundos' => $this->duracion_segundos,
             'transcripcion_lista' => $this->transcripcion_lista_en !== null,
             'fragmentos_subidos' => $this->whenCounted('fragmentos'),
+            // Tiempo de audio grabado (sin contar las pausas).
+            'segundos_grabados' => (int) ($this->fragmentos_sum_duracion_segundos ?? $this->fragmentos()->sum('duracion_segundos')),
         ];
     }
 }

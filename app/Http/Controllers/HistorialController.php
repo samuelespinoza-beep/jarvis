@@ -16,6 +16,7 @@ class HistorialController extends Controller
     {
         $reuniones = Reunion::query()
             ->withCount('fragmentos')
+            ->withSum('fragmentos', 'duracion_segundos')
             ->with('resumen')
             ->latest('iniciada_en')
             ->paginate(20)

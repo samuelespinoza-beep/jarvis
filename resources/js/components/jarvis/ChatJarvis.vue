@@ -1,20 +1,33 @@
 <script setup lang="ts">
 import { CircleAlert, LoaderCircle, Plus, SendHorizontal } from '@lucide/vue';
-import { nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, ref, toRef, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { useChat } from '@/composables/useChat';
 import { markdownSeguro } from '@/lib/markdown';
 
-const { mensajes, enviando, error, cargar, nueva, enviar } = useChat();
+const props = defineProps<{
+    // Reunión abierta (grabando o en pausa); null si no hay ninguna.
+    reunionId: string | null;
+}>();
+
+const { mensajes, enviando, error, nueva, enviar } = useChat(
+    toRef(props, 'reunionId'),
+);
 
 const texto = ref('');
 const lista = ref<HTMLElement | null>(null);
 
-const SUGERENCIAS = [
-    '¿Qué está publicando Infobae?',
-    'Últimos videos del canal @infobae',
-    '¿Qué acordamos en la última reunión?',
-];
+const sugerencias = computed(() =>
+    props.reunionId
+        ? [
+              '¿Qué se ha hablado hasta ahora?',
+              'Haz un resumen parcial de la reunión',
+          ]
+        : [
+              'Últimos videos del canal @infobae',
+              '¿Qué acordamos en la última reunión?',
+          ],
+);
 
 async function bajar() {
     await nextTick();
@@ -39,22 +52,22 @@ function alPresionarTecla(evento: KeyboardEvent) {
 }
 
 watch(mensajes, bajar, { deep: true });
-
-onMounted(async () => {
-    await cargar();
-    await bajar();
-});
 </script>
 
 <template>
     <div class="flex min-h-0 flex-1 flex-col gap-3">
         <div class="flex items-center justify-between">
             <p class="text-xs text-cyan-200/50">
-                Jarvis puede buscar en internet, leer páginas, ver YouTube y
-                consultar las reuniones.
+                <template v-if="reunionId">
+                    Chat de la reunión en curso. Se reinicia al terminarla.
+                </template>
+                <template v-else>
+                    Jarvis puede buscar en internet, leer páginas, ver YouTube y
+                    consultar las reuniones.
+                </template>
             </p>
             <Button
-                v-if="mensajes.length"
+                v-if="mensajes.length && !reunionId"
                 size="sm"
                 variant="ghost"
                 class="shrink-0 text-cyan-200 hover:bg-cyan-950 hover:text-cyan-50"
@@ -76,7 +89,7 @@ onMounted(async () => {
             >
                 <p class="text-sm text-cyan-200/60">Prueba con:</p>
                 <button
-                    v-for="sugerencia in SUGERENCIAS"
+                    v-for="sugerencia in sugerencias"
                     :key="sugerencia"
                     type="button"
                     class="rounded-lg border border-cyan-500/20 bg-cyan-950/20 px-3 py-2 text-left text-sm text-cyan-100/80 transition-colors hover:border-cyan-400/50 hover:bg-cyan-950/50"

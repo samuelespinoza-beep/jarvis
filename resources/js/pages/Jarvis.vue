@@ -6,21 +6,29 @@ import {
     FileText,
     LoaderCircle,
     Mic,
+    Pause,
+    Play,
     RotateCw,
     Square,
 } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { show as verReunion } from '@/actions/App/Http/Controllers/HistorialController';
 import ChatJarvis from '@/components/jarvis/ChatJarvis.vue';
 import NucleoJarvis from '@/components/jarvis/NucleoJarvis.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGrabadora } from '@/composables/useGrabadora';
-import type { EstadoSubida } from '@/composables/useGrabadora';
+import { useLineaDeTiempo } from '@/composables/useLineaDeTiempo';
 import { useSeguimientoReunion } from '@/composables/useSeguimientoReunion';
+import { useTranscripcionEnVivo } from '@/composables/useTranscripcionEnVivo';
 import { formatearHora, formatearTiempo } from '@/lib/formato';
 import { jarvis } from '@/routes';
-import type { ConfigGrabacion, EstadoFragmento, Reunion } from '@/types';
+import type {
+    ConfigGrabacion,
+    EstadoFragmento,
+    Reunion,
+    TramoReunion,
+} from '@/types';
 
 const props = defineProps<{
     reunionActiva: Reunion | null;
@@ -36,7 +44,6 @@ defineOptions({
 
 const titulo = ref('');
 const pestana = ref<'reunion' | 'chat'>('reunion');
-const pendiente = ref<Reunion | null>(props.reunionActiva);
 
 const {
     estado,
@@ -44,12 +51,48 @@ const {
     subidas,
     error,
     analizador,
+    microfono,
     segundos,
     escuchar,
+    pausar,
+    reanudar,
     terminar,
-    terminarSinGrabar,
     reintentar,
-} = useGrabadora(props.grabacion);
+} = useGrabadora(props.grabacion, props.reunionActiva);
+
+const enVivo = useTranscripcionEnVivo();
+const cajaEnVivo = ref<HTMLElement | null>(null);
+
+// La transcripción en vivo acompaña cada tramo grabado: empieza al escuchar o
+// reanudar y se corta al pausar o terminar.
+watch(
+    () => [estado.value === 'escuchando', microfono.value] as const,
+    ([grabando, stream]) => {
+        if (props.grabacion.enVivo && grabando && stream && reunion.value) {
+            void enVivo.conectar(reunion.value.id, stream);
+        } else {
+            enVivo.desconectar();
+        }
+    },
+);
+
+// Una reunión nueva empieza con el recuadro en vivo vacío.
+watch(
+    () => reunion.value?.id,
+    (id, anterior) => {
+        if (id && id !== anterior) {
+            enVivo.limpiar();
+        }
+    },
+);
+
+watch(
+    () => enVivo.lineas.value.map((l) => l.texto).join('\n'),
+    async () => {
+        await nextTick();
+        cajaEnVivo.value?.scrollTo({ top: cajaEnVivo.value.scrollHeight });
+    },
+);
 
 // Reunión terminada cuyo avance y resumen se muestran en el panel lateral.
 const reunionMostrada = ref<Reunion | null>(props.ultimaReunion);
@@ -63,16 +106,53 @@ watch(estado, (actual) => {
 
 watch(reunion, (actual) => {
     reunionMostrada.value =
-        actual && actual.estado !== 'grabando' ? actual : null;
+        actual && !['grabando', 'pausada'].includes(actual.estado)
+            ? actual
+            : null;
 });
 
 const { fragmentos, resumen, reprocesando, reprocesar } =
     useSeguimientoReunion(reunionMostrada);
 
 const escuchando = computed(() => estado.value === 'escuchando');
-const ocupado = computed(() =>
-    ['iniciando', 'terminando'].includes(estado.value),
+const reunionAbierta = computed(
+    () => !['inactivo', 'iniciando'].includes(estado.value),
 );
+
+const { tramos } = useLineaDeTiempo(
+    computed(() =>
+        reunionAbierta.value && reunion.value ? reunion.value.id : null,
+    ),
+);
+
+const subidasPendientes = computed(() =>
+    subidas.value.filter((subida) => subida.estado !== 'subido'),
+);
+
+function rango(tramo: TramoReunion): string {
+    return `${formatearTiempo(tramo.inicio_segundos)} – ${formatearTiempo(
+        tramo.inicio_segundos + tramo.duracion_segundos,
+    )}`;
+}
+
+// Si la reunión lleva mucho en pausa, probablemente ya es otra reunión.
+const LIMITE_PAUSA_MS = 2 * 60 * 60 * 1000;
+const ahora = ref(Date.now());
+const reloj = window.setInterval(() => (ahora.value = Date.now()), 60_000);
+onBeforeUnmount(() => window.clearInterval(reloj));
+
+const pausaLarga = computed(() => {
+    if (estado.value !== 'pausado' || !reunion.value) {
+        return false;
+    }
+
+    // Una reunión que quedó grabando al cerrar el navegador no tiene hora de pausa.
+    const desde = new Date(
+        reunion.value.pausada_en ?? reunion.value.iniciada_en,
+    ).getTime();
+
+    return ahora.value - desde > LIMITE_PAUSA_MS;
+});
 const transcritos = computed(
     () => fragmentos.value.filter((f) => f.estado === 'listo').length,
 );
@@ -83,6 +163,9 @@ const textoEstado = computed(
             inactivo: 'En espera',
             iniciando: 'Iniciando',
             escuchando: 'Escuchando',
+            pausando: 'Pausando',
+            pausado: 'En pausa',
+            reanudando: 'Reanudando',
             terminando: 'Guardando',
             'subida-pendiente': 'Subida pendiente',
         })[estado.value],
@@ -102,41 +185,22 @@ const colorFragmento: Record<EstadoFragmento, string> = {
     error: 'text-rose-400',
 };
 
-const iconoSubida: Record<EstadoSubida, string> = {
-    pendiente: 'text-slate-500',
-    subiendo: 'text-cyan-300 animate-pulse',
-    subido: 'text-emerald-400',
-    error: 'text-rose-400',
-};
-
 async function iniciar() {
-    await escuchar({ titulo: titulo.value.trim() });
+    await escuchar(titulo.value.trim());
 
     if (estado.value === 'escuchando') {
         titulo.value = '';
     }
 }
 
-async function reanudarPendiente() {
-    if (!pendiente.value) {
-        return;
+function confirmarTerminar() {
+    if (
+        window.confirm(
+            '¿Terminar la reunión? Ya no se podrá agregar más audio y Jarvis generará el acta.',
+        )
+    ) {
+        void terminar();
     }
-
-    await escuchar({ continuar: pendiente.value });
-
-    if (estado.value === 'escuchando') {
-        pendiente.value = null;
-    }
-}
-
-async function cerrarPendiente() {
-    if (!pendiente.value) {
-        return;
-    }
-
-    const reunionPendiente = pendiente.value;
-    pendiente.value = null;
-    await terminarSinGrabar(reunionPendiente);
 }
 </script>
 
@@ -172,31 +236,52 @@ async function cerrarPendiente() {
                     <p
                         class="font-mono text-4xl font-light tabular-nums"
                         :class="
-                            escuchando ? 'text-cyan-100' : 'text-cyan-100/40'
+                            escuchando
+                                ? 'text-cyan-100'
+                                : reunionAbierta
+                                  ? 'text-cyan-100/70'
+                                  : 'text-cyan-100/40'
                         "
                     >
-                        {{ formatearTiempo(escuchando ? segundos : 0) }}
+                        {{ formatearTiempo(reunionAbierta ? segundos : 0) }}
+                    </p>
+                    <p
+                        v-if="reunionAbierta && reunion"
+                        class="max-w-md truncate text-sm text-cyan-200/60"
+                    >
+                        {{ reunion.titulo || 'Reunión sin título' }} · tiempo
+                        grabado
                     </p>
                 </div>
 
                 <div class="flex w-full max-w-md flex-col items-center gap-3">
+                    <div
+                        v-if="pausaLarga && reunion"
+                        class="rounded-lg border border-amber-400/30 bg-amber-950/30 p-3 text-center text-sm text-amber-100"
+                    >
+                        Esta reunión está en pausa desde las
+                        {{
+                            formatearHora(
+                                reunion.pausada_en ?? reunion.iniciada_en,
+                            )
+                        }}. Si ahora empieza una reunión distinta, primero
+                        <strong>termínala</strong> y luego presiona
+                        <strong>Escuchar</strong>.
+                    </div>
+
                     <Input
-                        v-if="estado === 'inactivo' && !pendiente"
+                        v-if="estado === 'inactivo'"
                         v-model="titulo"
                         placeholder="Título de la reunión (opcional)"
                         maxlength="255"
                         class="border-cyan-500/30 bg-cyan-950/30 text-cyan-50 placeholder:text-cyan-200/40"
                     />
 
-                    <div class="flex gap-3">
+                    <div class="flex flex-wrap justify-center gap-3">
                         <Button
-                            v-if="!escuchando"
+                            v-if="!reunionAbierta"
                             size="lg"
-                            :disabled="
-                                ocupado ||
-                                estado === 'subida-pendiente' ||
-                                !!pendiente
-                            "
+                            :disabled="estado === 'iniciando'"
                             class="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
                             @click="iniciar"
                         >
@@ -204,13 +289,43 @@ async function cerrarPendiente() {
                             Escuchar
                         </Button>
                         <Button
-                            v-else
+                            v-if="
+                                estado === 'escuchando' || estado === 'pausando'
+                            "
+                            size="lg"
+                            variant="outline"
+                            :disabled="estado === 'pausando'"
+                            class="border-cyan-500/40 bg-transparent text-cyan-100 hover:bg-cyan-950"
+                            @click="pausar"
+                        >
+                            <Pause />
+                            Pausar
+                        </Button>
+                        <Button
+                            v-if="
+                                estado === 'pausado' || estado === 'reanudando'
+                            "
+                            size="lg"
+                            :disabled="estado === 'reanudando'"
+                            class="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                            @click="reanudar"
+                        >
+                            <Play />
+                            Reanudar
+                        </Button>
+                        <Button
+                            v-if="
+                                reunionAbierta && estado !== 'subida-pendiente'
+                            "
                             size="lg"
                             variant="destructive"
-                            @click="terminar"
+                            :disabled="
+                                estado !== 'escuchando' && estado !== 'pausado'
+                            "
+                            @click="confirmarTerminar"
                         >
                             <Square />
-                            Terminar
+                            Terminar reunión
                         </Button>
                         <Button
                             v-if="estado === 'subida-pendiente'"
@@ -231,6 +346,74 @@ async function cerrarPendiente() {
                     >
                         <CircleAlert class="size-4 shrink-0" />
                         {{ error }}
+                    </p>
+                </div>
+
+                <div
+                    v-if="
+                        grabacion.enVivo &&
+                        (reunionAbierta || enVivo.lineas.value.length)
+                    "
+                    class="flex w-full max-w-3xl flex-col gap-2"
+                >
+                    <div
+                        class="flex items-center gap-2 font-mono text-[11px] tracking-[0.3em] text-cyan-400/70 uppercase"
+                    >
+                        <span
+                            class="size-2 rounded-full"
+                            :class="
+                                enVivo.estado.value === 'activo'
+                                    ? 'animate-pulse bg-rose-500'
+                                    : enVivo.estado.value === 'conectando'
+                                      ? 'animate-pulse bg-amber-400'
+                                      : 'bg-slate-600'
+                            "
+                        />
+                        En vivo
+                        <span
+                            class="tracking-normal text-cyan-200/40 normal-case"
+                        >
+                            · sin separar hablantes · el acta usa la
+                            transcripción completa
+                        </span>
+                    </div>
+                    <div
+                        ref="cajaEnVivo"
+                        class="h-36 overflow-y-auto rounded-lg border border-cyan-500/20 bg-black/40 p-3 text-base leading-relaxed"
+                        aria-live="polite"
+                    >
+                        <p
+                            v-if="!enVivo.lineas.value.length"
+                            class="text-sm text-cyan-200/40"
+                        >
+                            {{
+                                enVivo.estado.value === 'conectando'
+                                    ? 'Conectando…'
+                                    : enVivo.estado.value === 'activo'
+                                      ? 'Escuchando… el texto aparecerá aquí.'
+                                      : estado === 'pausado'
+                                        ? 'En pausa.'
+                                        : ''
+                            }}
+                        </p>
+                        <p
+                            v-for="linea in enVivo.lineas.value"
+                            :key="linea.id"
+                            :class="
+                                linea.final
+                                    ? 'text-cyan-50/90'
+                                    : 'text-cyan-100/50 italic'
+                            "
+                        >
+                            {{ linea.texto || '…' }}
+                        </p>
+                    </div>
+                    <p
+                        v-if="enVivo.mensaje.value"
+                        class="flex items-center gap-2 text-xs text-amber-300"
+                    >
+                        <CircleAlert class="size-3.5 shrink-0" />
+                        {{ enVivo.mensaje.value }}
                     </p>
                 </div>
             </section>
@@ -263,51 +446,27 @@ async function cerrarPendiente() {
                     </button>
                 </div>
 
-                <ChatJarvis v-show="pestana === 'chat'" />
+                <ChatJarvis
+                    v-show="pestana === 'chat'"
+                    :reunion-id="reunionAbierta && reunion ? reunion.id : null"
+                />
 
                 <div v-show="pestana === 'reunion'" class="flex flex-col gap-4">
                     <h2
                         class="font-mono text-xs tracking-[0.3em] text-cyan-400/80 uppercase"
                     >
                         {{
-                            reunion && estado !== 'inactivo'
-                                ? 'Reunión en curso'
-                                : reunionMostrada && !pendiente
+                            reunionAbierta
+                                ? estado === 'pausado'
+                                    ? 'Reunión en pausa'
+                                    : 'Reunión en curso'
+                                : reunionMostrada
                                   ? 'Última reunión'
                                   : 'Reunión'
                         }}
                     </h2>
 
-                    <div
-                        v-if="pendiente"
-                        class="flex flex-col gap-3 rounded-lg border border-amber-400/30 bg-amber-950/20 p-4 text-sm"
-                    >
-                        <p class="text-amber-100">
-                            Hay una reunión sin terminar, iniciada a las
-                            {{ formatearHora(pendiente.iniciada_en) }} con
-                            {{ pendiente.fragmentos_subidos ?? 0 }} fragmento(s)
-                            guardados.
-                        </p>
-                        <div class="flex gap-2">
-                            <Button
-                                size="sm"
-                                class="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-                                @click="reanudarPendiente"
-                            >
-                                Seguir escuchando
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                class="border-amber-400/40 bg-transparent text-amber-100 hover:bg-amber-950"
-                                @click="cerrarPendiente"
-                            >
-                                Terminarla
-                            </Button>
-                        </div>
-                    </div>
-
-                    <template v-if="reunion && estado !== 'inactivo'">
+                    <template v-if="reunion && reunionAbierta">
                         <dl class="grid grid-cols-2 gap-y-2 text-sm">
                             <dt class="text-cyan-200/50">Título</dt>
                             <dd class="truncate text-right">
@@ -317,61 +476,108 @@ async function cerrarPendiente() {
                             <dd class="text-right">
                                 {{ formatearHora(reunion.iniciada_en) }}
                             </dd>
+                            <dt class="text-cyan-200/50">Grabado</dt>
+                            <dd class="text-right tabular-nums">
+                                {{ formatearTiempo(segundos) }}
+                            </dd>
                         </dl>
 
-                        <div v-if="subidas.length" class="flex flex-col gap-2">
+                        <p
+                            v-if="estado === 'pausado'"
+                            class="text-sm text-cyan-200/60"
+                        >
+                            La reunión sigue abierta. Presiona
+                            <strong class="text-cyan-100">Reanudar</strong>
+                            para seguir grabando en ella o
+                            <strong class="text-cyan-100"
+                                >Terminar reunión</strong
+                            >
+                            para generar el acta.
+                        </p>
+
+                        <div class="flex flex-col gap-2">
                             <h3
                                 class="font-mono text-xs tracking-[0.3em] text-cyan-400/60 uppercase"
                             >
-                                Fragmentos
+                                Línea de tiempo
                             </h3>
-                            <ul class="flex flex-col gap-1.5 text-sm">
+                            <ol
+                                v-if="tramos.length"
+                                class="flex max-h-[55vh] flex-col gap-3 overflow-y-auto pr-1 text-sm"
+                            >
                                 <li
-                                    v-for="subida in subidas"
-                                    :key="subida.orden"
-                                    class="flex items-center justify-between gap-2 rounded border border-cyan-500/10 bg-cyan-950/20 px-3 py-1.5"
-                                    :title="subida.error"
+                                    v-for="tramo in tramos"
+                                    :key="tramo.orden"
+                                    class="border-l-2 border-cyan-500/40 pl-3"
                                 >
-                                    <span class="font-mono">
-                                        #{{
-                                            String(subida.orden).padStart(
-                                                2,
-                                                '0',
-                                            )
-                                        }}
-                                    </span>
-                                    <span class="text-cyan-200/50 tabular-nums">
-                                        {{ formatearTiempo(subida.duracion) }} ·
-                                        {{
-                                            (
-                                                subida.tamano /
-                                                1024 /
-                                                1024
-                                            ).toFixed(1)
-                                        }}
-                                        MB
-                                    </span>
-                                    <span
-                                        class="text-xs"
-                                        :class="iconoSubida[subida.estado]"
+                                    <p
+                                        class="font-mono text-[11px] text-cyan-400/60"
                                     >
-                                        {{ subida.estado }}
-                                    </span>
+                                        {{ rango(tramo) }}
+                                    </p>
+                                    <template v-if="tramo.resumen">
+                                        <p class="font-medium text-cyan-50">
+                                            {{ tramo.resumen.tema }}
+                                        </p>
+                                        <p class="text-cyan-100/70">
+                                            {{ tramo.resumen.resumen }}
+                                        </p>
+                                    </template>
+                                    <p
+                                        v-else-if="tramo.estado === 'error'"
+                                        class="text-xs text-rose-300"
+                                        :title="tramo.error ?? undefined"
+                                    >
+                                        No se pudo transcribir este tramo.
+                                    </p>
+                                    <p
+                                        v-else
+                                        class="flex items-center gap-2 text-xs text-cyan-300/70"
+                                    >
+                                        <LoaderCircle
+                                            class="size-3 animate-spin"
+                                        />
+                                        {{
+                                            tramo.estado === 'listo'
+                                                ? 'Resumiendo…'
+                                                : 'Transcribiendo…'
+                                        }}
+                                    </p>
                                 </li>
-                            </ul>
+                            </ol>
+                            <p v-else class="text-sm text-cyan-200/50">
+                                Cada minuto grabado aparecerá aquí con su tema y
+                                un resumen corto.
+                            </p>
+                            <p
+                                v-if="escuchando && tramos.length"
+                                class="text-xs text-cyan-200/40"
+                            >
+                                Minuto en curso… se resume al completarse.
+                            </p>
+                            <p
+                                v-if="subidasPendientes.length"
+                                class="text-xs"
+                                :class="
+                                    subidasPendientes.some(
+                                        (s) => s.estado === 'error',
+                                    )
+                                        ? 'text-rose-300'
+                                        : 'text-cyan-200/50'
+                                "
+                            >
+                                {{
+                                    subidasPendientes.some(
+                                        (s) => s.estado === 'error',
+                                    )
+                                        ? 'No se pudo subir parte del audio.'
+                                        : 'Subiendo audio…'
+                                }}
+                            </p>
                         </div>
-
-                        <p
-                            v-else-if="escuchando"
-                            class="text-sm text-cyan-200/50"
-                        >
-                            El audio se guarda en fragmentos de
-                            {{ Math.round(grabacion.fragmentoSegundos / 60) }}
-                            minutos. El primero aparecerá aquí al completarse.
-                        </p>
                     </template>
 
-                    <template v-else-if="reunionMostrada && !pendiente">
+                    <template v-else-if="reunionMostrada">
                         <dl class="grid grid-cols-2 gap-y-2 text-sm">
                             <dt class="text-cyan-200/50">Título</dt>
                             <dd class="truncate text-right">
@@ -523,7 +729,7 @@ async function cerrarPendiente() {
                         </Button>
                     </template>
 
-                    <p v-else-if="!pendiente" class="text-sm text-cyan-200/50">
+                    <p v-else class="text-sm text-cyan-200/50">
                         Presiona <strong class="text-cyan-100">Escuchar</strong>
                         al iniciar la reunión y
                         <strong class="text-cyan-100">Terminar</strong> al

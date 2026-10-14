@@ -62,7 +62,7 @@ class ReunionTest extends TestCase
                 ->component('Jarvis')
                 ->where('reunionActiva.id', $reunion->id)
                 ->where('reunionActiva.fragmentos_subidos', 0)
-                ->where('grabacion.fragmentoSegundos', 240));
+                ->where('grabacion.fragmentoSegundos', 60));
     }
 
     public function test_starting_a_meeting_creates_it_and_its_json_mirror()
@@ -165,5 +165,97 @@ class ReunionTest extends TestCase
 
         $this->assertModelMissing($reunion);
         Storage::disk('local')->assertMissing("reuniones/{$reunion->id}");
+    }
+
+    public function test_a_meeting_can_be_paused_and_resumed_keeping_a_single_meeting()
+    {
+        $user = User::factory()->create();
+        $reunion = $this->iniciarReunion($user, 'Comité comercial');
+
+        $this->subirFragmento($reunion, 1, 300)->assertCreated();
+        $this->postJson(route('reuniones.pausar', $reunion))
+            ->assertOk()
+            ->assertJsonPath('reunion.estado', 'pausada')
+            ->assertJsonPath('reunion.segundos_grabados', 300);
+
+        $this->assertNotNull($reunion->refresh()->pausada_en);
+
+        // El último tramo puede llegar justo después de pausar.
+        $this->subirFragmento($reunion, 2, 20)->assertCreated();
+
+        $this->postJson(route('reuniones.reanudar', $reunion))
+            ->assertOk()
+            ->assertJsonPath('reunion.estado', 'grabando')
+            ->assertJsonPath('reunion.pausada_en', null)
+            ->assertJsonPath('reunion.fragmentos_subidos', 2);
+
+        $this->subirFragmento($reunion, 3, 600)->assertCreated();
+        $this->postJson(route('reuniones.terminar', $reunion))
+            ->assertOk()
+            ->assertJsonPath('reunion.estado', 'procesando')
+            ->assertJsonPath('reunion.duracion_segundos', 920);
+
+        $this->assertSame(1, Reunion::count());
+    }
+
+    public function test_a_paused_meeting_can_be_finished_directly()
+    {
+        $reunion = $this->iniciarReunion(User::factory()->create());
+        $this->subirFragmento($reunion, 1)->assertCreated();
+        $this->postJson(route('reuniones.pausar', $reunion))->assertOk();
+
+        $this->postJson(route('reuniones.terminar', $reunion))
+            ->assertOk()
+            ->assertJsonPath('reunion.estado', 'procesando')
+            ->assertJsonPath('reunion.pausada_en', null);
+    }
+
+    public function test_no_new_meeting_can_start_while_one_is_paused()
+    {
+        $reunion = $this->iniciarReunion(User::factory()->create());
+        $this->postJson(route('reuniones.pausar', $reunion))->assertOk();
+
+        $this->postJson(route('reuniones.store'))
+            ->assertConflict()
+            ->assertJsonPath('reunion.id', $reunion->id);
+    }
+
+    public function test_jarvis_page_shows_the_paused_meeting_with_its_recorded_time()
+    {
+        $user = User::factory()->create();
+        $reunion = $this->iniciarReunion($user);
+        $this->subirFragmento($reunion, 1, 240)->assertCreated();
+        $this->subirFragmento($reunion, 2, 60)->assertCreated();
+        $this->postJson(route('reuniones.pausar', $reunion))->assertOk();
+
+        $this->get(route('jarvis'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('reunionActiva.id', $reunion->id)
+                ->where('reunionActiva.estado', 'pausada')
+                ->where('reunionActiva.segundos_grabados', 300));
+    }
+
+    public function test_a_meeting_left_recording_after_a_browser_crash_can_be_resumed()
+    {
+        $reunion = $this->iniciarReunion(User::factory()->create());
+
+        $this->postJson(route('reuniones.reanudar', $reunion))
+            ->assertOk()
+            ->assertJsonPath('reunion.estado', 'grabando');
+    }
+
+    public function test_only_open_meetings_can_be_paused_or_resumed()
+    {
+        $reunion = $this->iniciarReunion(User::factory()->create());
+
+        $this->postJson(route('reuniones.reanudar', $reunion))->assertOk();
+        $this->postJson(route('reuniones.pausar', $reunion))->assertOk();
+        $this->postJson(route('reuniones.pausar', $reunion))->assertConflict();
+
+        $this->subirFragmento($reunion, 1)->assertCreated();
+        $this->postJson(route('reuniones.terminar', $reunion))->assertOk();
+
+        $this->postJson(route('reuniones.reanudar', $reunion))->assertConflict();
+        $this->postJson(route('reuniones.pausar', $reunion))->assertConflict();
     }
 }

@@ -66,7 +66,7 @@ class HerramientasJarvisTest extends TestCase
         }
     }
 
-    public function test_lists_the_latest_youtube_videos()
+    public function test_lists_the_latest_youtube_videos_with_the_api_when_a_key_is_configured()
     {
         config(['services.youtube.api_key' => 'clave-de-prueba']);
 
@@ -94,13 +94,67 @@ class HerramientasJarvisTest extends TestCase
             && str_contains($peticion->url(), 'key=clave-de-prueba'));
     }
 
-    public function test_youtube_explains_when_the_api_key_is_missing()
+    public function test_lists_youtube_videos_without_an_api_key_by_reading_the_channel_page()
     {
         config(['services.youtube.api_key' => null]);
 
+        $datos = [
+            'metadata' => ['channelMetadataRenderer' => ['title' => 'Infobae', 'externalId' => 'UCvsU0EGXN7Su7MfNqcTGNHg']],
+            'contents' => ['tabs' => [['items' => [
+                ['lockupViewModel' => [
+                    'contentId' => 'Ws_4S5wzRoY',
+                    'metadata' => ['lockupMetadataViewModel' => [
+                        'title' => ['content' => 'Video formato nuevo'],
+                        'metadata' => ['contentMetadataViewModel' => ['metadataRows' => [
+                            ['metadataParts' => [['text' => ['content' => '5.2 K vistas']], ['text' => ['content' => 'hace 5 h']]]],
+                        ]]],
+                    ]],
+                ]],
+                ['videoRenderer' => [
+                    'videoId' => 'KMOqlNWsUtc',
+                    'title' => ['runs' => [['text' => 'Video formato anterior']]],
+                    'publishedTimeText' => ['simpleText' => 'hace 1 día'],
+                ]],
+            ]]]],
+        ];
+
+        Http::fake(['www.youtube.com/@infobae/videos' => Http::response(
+            '<html><script>var ytInitialData = '.json_encode($datos).';</script></html>',
+        )]);
+
         $resultado = (string) (new UltimosVideosYoutube)->handle(new Request(['canal' => '@infobae', 'cantidad' => 5]));
 
-        $this->assertStringContainsString('falta YOUTUBE_API_KEY', $resultado);
+        $this->assertStringContainsString('Canal: Infobae', $resultado);
+        $this->assertStringContainsString('- Video formato nuevo (hace 5 h) — https://www.youtube.com/watch?v=Ws_4S5wzRoY', $resultado);
+        $this->assertStringContainsString('- Video formato anterior (hace 1 día) — https://www.youtube.com/watch?v=KMOqlNWsUtc', $resultado);
+        Http::assertNotSent(fn ($peticion) => str_contains($peticion->url(), 'googleapis.com'));
+    }
+
+    public function test_youtube_falls_back_to_the_page_when_the_api_fails()
+    {
+        config(['services.youtube.api_key' => 'llave-vencida']);
+
+        Http::fake([
+            'www.googleapis.com/*' => Http::response(['error' => ['message' => 'quotaExceeded']], 403),
+            'www.youtube.com/*' => Http::response('<script>var ytInitialData = '.json_encode([
+                'metadata' => ['channelMetadataRenderer' => ['title' => 'RPP Noticias']],
+                'items' => [['videoRenderer' => ['videoId' => 'abcdefghijk', 'title' => ['runs' => [['text' => 'Noticia']]]]]],
+            ]).';</script>'),
+        ]);
+
+        $resultado = (string) (new UltimosVideosYoutube)->handle(new Request(['canal' => '@RPPNoticias', 'cantidad' => 5]));
+
+        $this->assertStringContainsString('- Noticia — https://www.youtube.com/watch?v=abcdefghijk', $resultado);
+    }
+
+    public function test_youtube_reports_channels_that_do_not_exist()
+    {
+        config(['services.youtube.api_key' => null]);
+        Http::fake(['www.youtube.com/*' => Http::response('Not found', 404)]);
+
+        $resultado = (string) (new UltimosVideosYoutube)->handle(new Request(['canal' => 'canal-inexistente', 'cantidad' => 5]));
+
+        $this->assertStringContainsString('No se encontró el canal de YouTube', $resultado);
     }
 
     public function test_finds_meetings_and_reads_their_minutes()

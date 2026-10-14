@@ -5,6 +5,7 @@ use App\Http\Controllers\FragmentoAudioController;
 use App\Http\Controllers\HistorialController;
 use App\Http\Controllers\JarvisController;
 use App\Http\Controllers\ReunionController;
+use App\Http\Controllers\TranscripcionEnVivoController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect()->route('jarvis'))->name('home');
@@ -22,9 +23,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::post('reuniones', [ReunionController::class, 'store'])->name('reuniones.store');
     Route::get('reuniones/{reunion}/estado', [ReunionController::class, 'estado'])->name('reuniones.estado');
+    Route::post('reuniones/{reunion}/pausar', [ReunionController::class, 'pausar'])->name('reuniones.pausar');
+    Route::post('reuniones/{reunion}/reanudar', [ReunionController::class, 'reanudar'])->name('reuniones.reanudar');
     Route::post('reuniones/{reunion}/terminar', [ReunionController::class, 'terminar'])->name('reuniones.terminar');
     Route::post('reuniones/{reunion}/reprocesar', [ReunionController::class, 'reprocesar'])->name('reuniones.reprocesar');
     Route::post('reuniones/{reunion}/resumen', [ReunionController::class, 'regenerarResumen'])->name('reuniones.resumen.regenerar');
+    Route::post('reuniones/{reunion}/en-vivo', TranscripcionEnVivoController::class)->middleware('throttle:30,1')->name('reuniones.en-vivo');
     Route::post('reuniones/{reunion}/fragmentos', [FragmentoAudioController::class, 'store'])->name('reuniones.fragmentos.store');
 });
 

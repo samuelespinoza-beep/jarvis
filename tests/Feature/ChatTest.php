@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Ai\Agents\Jarvis;
+use App\Enums\EstadoReunion;
+use App\Models\Reunion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Ai\Prompts\AgentPrompt;
@@ -37,7 +39,7 @@ class ChatTest extends TestCase
         Jarvis::assertPrompted(fn (AgentPrompt $prompt) => $prompt->model === 'gpt-6-luna'
             && $prompt->contains('¿Quién eres?'));
 
-        $this->getJson(route('chat.mensajes'))
+        $this->getJson(route('chat.mensajes', ['conversacion' => $id]))
             ->assertOk()
             ->assertJsonPath('conversacion_id', $id)
             ->assertJsonPath('mensajes.0.rol', 'usuario')
@@ -84,5 +86,73 @@ class ChatTest extends TestCase
         $this->actingAs(User::factory()->create())
             ->getJson(route('chat.mensajes'))
             ->assertExactJson(['conversacion_id' => null, 'mensajes' => []]);
+    }
+
+    public function test_the_general_chat_starts_empty_instead_of_reloading_the_last_conversation()
+    {
+        Jarvis::fake(['Respuesta.']);
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->post(route('chat.enviar'), ['mensaje' => 'Hola'])->streamedContent();
+
+        $this->getJson(route('chat.mensajes'))
+            ->assertExactJson(['conversacion_id' => null, 'mensajes' => []]);
+    }
+
+    public function test_each_open_meeting_has_its_own_chat_and_jarvis_knows_about_it()
+    {
+        Jarvis::fake(['Van 5 minutos de reunión.', 'Seguimos.', 'Otra reunión.']);
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $reunion = Reunion::create([
+            'titulo' => 'Comité comercial',
+            'estado' => EstadoReunion::Pausada,
+            'iniciada_en' => now(),
+            'creada_por' => $user->id,
+        ]);
+
+        $this->post(route('chat.enviar'), ['mensaje' => '¿Qué se ha hablado?', 'reunion_id' => $reunion->id])
+            ->streamedContent();
+
+        $conversacion = $reunion->refresh()->conversacion_id;
+        $this->assertNotNull($conversacion);
+
+        Jarvis::assertPrompted(fn (AgentPrompt $prompt) => str_contains((string) $prompt->agent->instructions(), "ID: {$reunion->id}")
+            && str_contains((string) $prompt->agent->instructions(), 'Comité comercial'));
+
+        // El segundo mensaje sigue en la misma conversación, aunque el navegador mande otra.
+        $this->post(route('chat.enviar'), [
+            'mensaje' => '¿Y ahora?',
+            'reunion_id' => $reunion->id,
+            'conversacion_id' => 'otra-cualquiera',
+        ])->assertHeader('X-Conversacion-Id', $conversacion)->streamedContent();
+
+        $this->getJson(route('chat.mensajes', ['reunion' => $reunion->id]))
+            ->assertJsonPath('conversacion_id', $conversacion)
+            ->assertJsonCount(4, 'mensajes');
+
+        // Una reunión nueva empieza con el chat vacío.
+        $otra = Reunion::create(['estado' => EstadoReunion::Grabando, 'iniciada_en' => now(), 'creada_por' => $user->id]);
+
+        $this->getJson(route('chat.mensajes', ['reunion' => $otra->id]))
+            ->assertExactJson(['conversacion_id' => null, 'mensajes' => []]);
+    }
+
+    public function test_jarvis_does_not_treat_a_finished_meeting_as_the_current_one()
+    {
+        Jarvis::fake(['Ok.']);
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $reunion = Reunion::create([
+            'estado' => EstadoReunion::Completada,
+            'iniciada_en' => now(),
+            'creada_por' => $user->id,
+        ]);
+
+        $this->post(route('chat.enviar'), ['mensaje' => 'Hola', 'reunion_id' => $reunion->id])->streamedContent();
+
+        Jarvis::assertPrompted(fn (AgentPrompt $prompt) => ! str_contains((string) $prompt->agent->instructions(), 'Reunión en curso'));
     }
 }

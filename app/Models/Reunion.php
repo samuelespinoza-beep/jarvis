@@ -17,17 +17,19 @@ use Illuminate\Support\Carbon;
  * @property string|null $titulo
  * @property EstadoReunion $estado
  * @property Carbon $iniciada_en
+ * @property Carbon|null $pausada_en
  * @property Carbon|null $finalizada_en
  * @property int|null $duracion_segundos
  * @property Carbon|null $transcripcion_lista_en
  * @property int $creada_por
+ * @property string|null $conversacion_id
  * @property int $costo_audio_segundos
  * @property int $costo_tokens
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
 #[Table('reuniones')]
-#[Fillable(['titulo', 'estado', 'iniciada_en', 'finalizada_en', 'duracion_segundos', 'creada_por'])]
+#[Fillable(['titulo', 'estado', 'iniciada_en', 'pausada_en', 'finalizada_en', 'duracion_segundos', 'creada_por', 'conversacion_id'])]
 class Reunion extends Model
 {
     use HasUlids;
@@ -42,6 +44,7 @@ class Reunion extends Model
         return [
             'estado' => EstadoReunion::class,
             'iniciada_en' => 'datetime',
+            'pausada_en' => 'datetime',
             'finalizada_en' => 'datetime',
             'transcripcion_lista_en' => 'datetime',
         ];

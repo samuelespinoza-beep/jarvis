@@ -3,36 +3,44 @@
 namespace App\Http\Controllers;
 
 use App\Ai\Agents\Jarvis;
+use App\Models\Reunion;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Laravel\Ai\Contracts\ConversationStore;
 use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
+use Laravel\Ai\Responses\StreamedAgentResponse;
 use Symfony\Component\HttpFoundation\Response;
 
+/**
+ * Chat con Jarvis. Mientras hay una reunión abierta, el chat pertenece a ella
+ * (una conversación por reunión). Sin reunión abierta es un chat general que
+ * empieza en blanco cada vez.
+ */
 class ChatController extends Controller
 {
     public function __construct(private ConversationStore $conversaciones) {}
 
     /**
-     * Mensajes de una conversación. Sin ID, devuelve la última conversación
-     * del usuario con Jarvis.
+     * Mensajes del chat de una reunión (?reunion=ID) o de una conversación
+     * general (?conversacion=ID).
      */
     public function mensajes(Request $request): JsonResponse
     {
-        $usuario = $request->user();
-        $id = $request->string('conversacion')->toString()
-            ?: $this->conversaciones->latestConversationId(
-                Conversation::participantType($usuario),
-                Conversation::participantKey($usuario),
-                Jarvis::class,
-            );
+        if ($request->filled('reunion')) {
+            $id = Reunion::query()->findOrFail($request->string('reunion')->toString())->conversacion_id;
+        } else {
+            $id = $request->string('conversacion')->toString() ?: null;
+
+            if ($id) {
+                $this->autorizar($request, $id);
+            }
+        }
 
         if (! $id) {
             return response()->json(['conversacion_id' => null, 'mensajes' => []]);
         }
-
-        $this->autorizar($request, $id);
 
         $mensajes = ConversationMessage::query()
             ->where('conversation_id', $id)
@@ -56,18 +64,31 @@ class ChatController extends Controller
     {
         $datos = $request->validate([
             'mensaje' => ['required', 'string', 'max:4000'],
+            'reunion_id' => ['nullable', 'string', Rule::exists('reuniones', 'id')],
             'conversacion_id' => ['nullable', 'string', 'max:36'],
         ]);
 
-        $id = $datos['conversacion_id'] ?? null;
+        $reunion = isset($datos['reunion_id']) ? Reunion::query()->find($datos['reunion_id']) : null;
 
-        if ($id) {
+        // En una reunión manda la conversación guardada en ella, no la que diga el navegador.
+        $id = $reunion ? $reunion->conversacion_id : ($datos['conversacion_id'] ?? null);
+
+        if ($id && ! $reunion) {
             $this->autorizar($request, $id);
         }
 
-        $respuesta = (new Jarvis)
+        $respuesta = (new Jarvis($reunion?->estado->estaAbierta() ? $reunion : null))
             ->continueOrStart($id, as: $request->user())
             ->stream($datos['mensaje'], model: config('jarvis.chat.modelo'));
+
+        // La conversación se crea al terminar de responder; recién ahí se asocia a la reunión.
+        if ($reunion && ! $reunion->conversacion_id) {
+            $respuesta->then(function (StreamedAgentResponse $completa) use ($reunion) {
+                if ($completa->conversationId) {
+                    $reunion->update(['conversacion_id' => $completa->conversationId]);
+                }
+            });
+        }
 
         $http = $respuesta->toResponse($request);
         $http->headers->set('X-Conversacion-Id', (string) ($respuesta->conversationId ?? $id));
