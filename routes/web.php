@@ -13,7 +13,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('jarvis', JarvisController::class)->name('jarvis');
 
     Route::post('reuniones', [ReunionController::class, 'store'])->name('reuniones.store');
+    Route::get('reuniones/{reunion}', [ReunionController::class, 'show'])->name('reuniones.show');
     Route::post('reuniones/{reunion}/terminar', [ReunionController::class, 'terminar'])->name('reuniones.terminar');
+    Route::post('reuniones/{reunion}/reprocesar', [ReunionController::class, 'reprocesar'])->name('reuniones.reprocesar');
     Route::post('reuniones/{reunion}/fragmentos', [FragmentoAudioController::class, 'store'])->name('reuniones.fragmentos.store');
 });
 

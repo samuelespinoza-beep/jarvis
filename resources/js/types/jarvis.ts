@@ -10,6 +10,24 @@ export type Reunion = {
     fragmentos_subidos?: number;
 };
 
+export type EstadoFragmento =
+    | 'pendiente'
+    | 'transcribiendo'
+    | 'listo'
+    | 'error';
+
+export type FragmentoProcesado = {
+    orden: number;
+    estado: EstadoFragmento;
+    error: string | null;
+};
+
+export type SegmentoTranscripcion = {
+    hablante: string | null;
+    inicio_segundos: number;
+    texto: string;
+};
+
 export type ConfigGrabacion = {
     fragmentoSegundos: number;
     audioBitsPorSegundo: number;

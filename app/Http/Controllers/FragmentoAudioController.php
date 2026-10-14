@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\EstadoFragmento;
 use App\Enums\EstadoReunion;
 use App\Http\Requests\GuardarFragmentoRequest;
+use App\Jobs\TranscribirFragmento;
 use App\Models\Reunion;
 use App\Services\EspejoReunion;
 use Illuminate\Http\JsonResponse;
@@ -50,6 +51,8 @@ class FragmentoAudioController extends Controller
         ]);
 
         $this->espejo->guardar($reunion->refresh());
+
+        TranscribirFragmento::dispatch($fragmento);
 
         return response()->json(['fragmento' => ['id' => $fragmento->id, 'orden' => $fragmento->orden]], 201);
     }

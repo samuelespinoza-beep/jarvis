@@ -61,6 +61,14 @@ class Reunion extends Model
     }
 
     /**
+     * @return HasMany<SegmentoTranscripcion, $this>
+     */
+    public function segmentos(): HasMany
+    {
+        return $this->hasMany(SegmentoTranscripcion::class)->orderBy('inicio_segundos')->orderBy('orden');
+    }
+
+    /**
      * @return BelongsTo<User, $this>
      */
     public function creador(): BelongsTo

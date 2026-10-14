@@ -18,8 +18,15 @@ class JarvisController extends Controller
             ->latest('iniciada_en')
             ->first();
 
+        $ultimaReunion = Reunion::query()
+            ->where('estado', '!=', EstadoReunion::Grabando)
+            ->withCount('fragmentos')
+            ->latest('iniciada_en')
+            ->first();
+
         return Inertia::render('Jarvis', [
             'reunionActiva' => $reunionActiva ? (new ReunionResource($reunionActiva))->resolve() : null,
+            'ultimaReunion' => $ultimaReunion ? (new ReunionResource($ultimaReunion))->resolve() : null,
             'grabacion' => [
                 'fragmentoSegundos' => config('jarvis.fragmento_segundos'),
                 'audioBitsPorSegundo' => config('jarvis.audio_bits_por_segundo'),

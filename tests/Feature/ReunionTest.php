@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Enums\EstadoFragmento;
 use App\Enums\EstadoReunion;
+use App\Jobs\TranscribirFragmento;
 use App\Models\Reunion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -21,6 +23,8 @@ class ReunionTest extends TestCase
         parent::setUp();
 
         Storage::fake('local');
+        // Aquí solo se prueba la grabación; la transcripción tiene su propio test.
+        Queue::fake();
     }
 
     private function iniciarReunion(User $user, ?string $titulo = null): Reunion
@@ -99,6 +103,7 @@ class ReunionTest extends TestCase
         $fragmentos = $reunion->fragmentos()->get();
         $this->assertSame([1, 2], $fragmentos->pluck('orden')->all());
         $this->assertSame(EstadoFragmento::Pendiente, $fragmentos[0]->estado);
+        Queue::assertPushed(TranscribirFragmento::class, 2);
 
         $espejo = json_decode(Storage::disk('local')->get("reuniones/{$reunion->id}/reunion.json"), true);
         $this->assertSame(['0001.webm', '0002.webm'], array_column($espejo['fragmentos'], 'archivo'));
