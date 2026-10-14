@@ -1,20 +1,24 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import {
     CircleAlert,
     CircleCheck,
+    FileText,
     LoaderCircle,
     Mic,
     RotateCw,
     Square,
 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
+import { show as verReunion } from '@/actions/App/Http/Controllers/HistorialController';
+import ChatJarvis from '@/components/jarvis/ChatJarvis.vue';
 import NucleoJarvis from '@/components/jarvis/NucleoJarvis.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGrabadora } from '@/composables/useGrabadora';
 import type { EstadoSubida } from '@/composables/useGrabadora';
 import { useSeguimientoReunion } from '@/composables/useSeguimientoReunion';
+import { formatearHora, formatearTiempo } from '@/lib/formato';
 import { jarvis } from '@/routes';
 import type { ConfigGrabacion, EstadoFragmento, Reunion } from '@/types';
 
@@ -31,6 +35,7 @@ defineOptions({
 });
 
 const titulo = ref('');
+const pestana = ref<'reunion' | 'chat'>('reunion');
 const pendiente = ref<Reunion | null>(props.reunionActiva);
 
 const {
@@ -46,15 +51,22 @@ const {
     reintentar,
 } = useGrabadora(props.grabacion);
 
-// Reunión terminada cuyo avance y transcripción se muestran en el panel lateral.
+// Reunión terminada cuyo avance y resumen se muestran en el panel lateral.
 const reunionMostrada = ref<Reunion | null>(props.ultimaReunion);
+
+// Al empezar a grabar se muestra el panel de la reunión en curso.
+watch(estado, (actual) => {
+    if (actual === 'escuchando') {
+        pestana.value = 'reunion';
+    }
+});
 
 watch(reunion, (actual) => {
     reunionMostrada.value =
         actual && actual.estado !== 'grabando' ? actual : null;
 });
 
-const { fragmentos, segmentos, reprocesando, reprocesar } =
+const { fragmentos, resumen, reprocesando, reprocesar } =
     useSeguimientoReunion(reunionMostrada);
 
 const escuchando = computed(() => estado.value === 'escuchando');
@@ -96,24 +108,6 @@ const iconoSubida: Record<EstadoSubida, string> = {
     subido: 'text-emerald-400',
     error: 'text-rose-400',
 };
-
-function formatearTiempo(total: number): string {
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    const dosDigitos = (n: number) => String(n).padStart(2, '0');
-
-    return h > 0
-        ? `${h}:${dosDigitos(m)}:${dosDigitos(s)}`
-        : `${dosDigitos(m)}:${dosDigitos(s)}`;
-}
-
-function formatearHora(iso: string): string {
-    return new Date(iso).toLocaleTimeString('es-PE', {
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-}
 
 async function iniciar() {
     await escuchar({ titulo: titulo.value.trim() });
@@ -242,223 +236,300 @@ async function cerrarPendiente() {
             </section>
 
             <aside
-                class="relative flex w-full flex-col gap-4 border-t border-cyan-500/20 bg-cyan-950/10 p-5 lg:w-96 lg:border-t-0 lg:border-l"
+                class="relative flex w-full flex-col gap-4 border-t border-cyan-500/20 bg-cyan-950/10 p-5 lg:w-[28rem] lg:border-t-0 lg:border-l"
             >
-                <h2
-                    class="font-mono text-xs tracking-[0.3em] text-cyan-400/80 uppercase"
-                >
-                    Reunión
-                </h2>
-
                 <div
-                    v-if="pendiente"
-                    class="flex flex-col gap-3 rounded-lg border border-amber-400/30 bg-amber-950/20 p-4 text-sm"
+                    class="flex gap-1 border-b border-cyan-500/20"
+                    role="tablist"
                 >
-                    <p class="text-amber-100">
-                        Hay una reunión sin terminar, iniciada a las
-                        {{ formatearHora(pendiente.iniciada_en) }} con
-                        {{ pendiente.fragmentos_subidos ?? 0 }} fragmento(s)
-                        guardados.
-                    </p>
-                    <div class="flex gap-2">
-                        <Button
-                            size="sm"
-                            class="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-                            @click="reanudarPendiente"
-                        >
-                            Seguir escuchando
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            class="border-amber-400/40 bg-transparent text-amber-100 hover:bg-amber-950"
-                            @click="cerrarPendiente"
-                        >
-                            Terminarla
-                        </Button>
-                    </div>
+                    <button
+                        v-for="opcion in [
+                            { valor: 'reunion', texto: 'Reunión' },
+                            { valor: 'chat', texto: 'Chat' },
+                        ] as const"
+                        :key="opcion.valor"
+                        type="button"
+                        role="tab"
+                        :aria-selected="pestana === opcion.valor"
+                        class="-mb-px border-b-2 px-3 py-2 font-mono text-xs tracking-[0.3em] uppercase transition-colors"
+                        :class="
+                            pestana === opcion.valor
+                                ? 'border-cyan-400 text-cyan-300'
+                                : 'border-transparent text-cyan-200/40 hover:text-cyan-200/80'
+                        "
+                        @click="pestana = opcion.valor"
+                    >
+                        {{ opcion.texto }}
+                    </button>
                 </div>
 
-                <template v-if="reunion && estado !== 'inactivo'">
-                    <dl class="grid grid-cols-2 gap-y-2 text-sm">
-                        <dt class="text-cyan-200/50">Título</dt>
-                        <dd class="truncate text-right">
-                            {{ reunion.titulo || 'Sin título' }}
-                        </dd>
-                        <dt class="text-cyan-200/50">Inicio</dt>
-                        <dd class="text-right">
-                            {{ formatearHora(reunion.iniciada_en) }}
-                        </dd>
-                    </dl>
+                <ChatJarvis v-show="pestana === 'chat'" />
 
-                    <div v-if="subidas.length" class="flex flex-col gap-2">
-                        <h3
-                            class="font-mono text-xs tracking-[0.3em] text-cyan-400/60 uppercase"
-                        >
-                            Fragmentos
-                        </h3>
-                        <ul class="flex flex-col gap-1.5 text-sm">
-                            <li
-                                v-for="subida in subidas"
-                                :key="subida.orden"
-                                class="flex items-center justify-between gap-2 rounded border border-cyan-500/10 bg-cyan-950/20 px-3 py-1.5"
-                                :title="subida.error"
-                            >
-                                <span class="font-mono">
-                                    #{{ String(subida.orden).padStart(2, '0') }}
-                                </span>
-                                <span class="text-cyan-200/50 tabular-nums">
-                                    {{ formatearTiempo(subida.duracion) }} ·
-                                    {{
-                                        (subida.tamano / 1024 / 1024).toFixed(1)
-                                    }}
-                                    MB
-                                </span>
-                                <span
-                                    class="text-xs"
-                                    :class="iconoSubida[subida.estado]"
-                                >
-                                    {{ subida.estado }}
-                                </span>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <p v-else-if="escuchando" class="text-sm text-cyan-200/50">
-                        El audio se guarda en fragmentos de
-                        {{ Math.round(grabacion.fragmentoSegundos / 60) }}
-                        minutos. El primero aparecerá aquí al completarse.
-                    </p>
-                </template>
-
-                <template v-else-if="reunionMostrada && !pendiente">
-                    <dl class="grid grid-cols-2 gap-y-2 text-sm">
-                        <dt class="text-cyan-200/50">Título</dt>
-                        <dd class="truncate text-right">
-                            {{ reunionMostrada.titulo || 'Sin título' }}
-                        </dd>
-                        <dt class="text-cyan-200/50">Inicio</dt>
-                        <dd class="text-right">
-                            {{ formatearHora(reunionMostrada.iniciada_en) }}
-                        </dd>
-                        <dt class="text-cyan-200/50">Duración</dt>
-                        <dd class="text-right tabular-nums">
-                            {{
-                                formatearTiempo(
-                                    reunionMostrada.duracion_segundos ?? 0,
-                                )
-                            }}
-                        </dd>
-                    </dl>
+                <div v-show="pestana === 'reunion'" class="flex flex-col gap-4">
+                    <h2
+                        class="font-mono text-xs tracking-[0.3em] text-cyan-400/80 uppercase"
+                    >
+                        {{
+                            reunion && estado !== 'inactivo'
+                                ? 'Reunión en curso'
+                                : reunionMostrada && !pendiente
+                                  ? 'Última reunión'
+                                  : 'Reunión'
+                        }}
+                    </h2>
 
                     <div
-                        v-if="reunionMostrada.estado === 'procesando'"
-                        class="flex flex-col gap-3 rounded-lg border border-cyan-400/30 bg-cyan-950/30 p-4 text-sm"
-                        aria-live="polite"
+                        v-if="pendiente"
+                        class="flex flex-col gap-3 rounded-lg border border-amber-400/30 bg-amber-950/20 p-4 text-sm"
                     >
-                        <p class="flex items-center gap-2 font-medium">
-                            <LoaderCircle class="size-4 animate-spin" />
-                            Transcribiendo {{ transcritos }} de
-                            {{ fragmentos.length || '…' }}
+                        <p class="text-amber-100">
+                            Hay una reunión sin terminar, iniciada a las
+                            {{ formatearHora(pendiente.iniciada_en) }} con
+                            {{ pendiente.fragmentos_subidos ?? 0 }} fragmento(s)
+                            guardados.
                         </p>
-                        <div class="h-1 overflow-hidden rounded bg-cyan-950">
-                            <div
-                                class="h-full bg-cyan-400 transition-all"
-                                :style="{
-                                    width: `${fragmentos.length ? (transcritos / fragmentos.length) * 100 : 0}%`,
-                                }"
-                            />
+                        <div class="flex gap-2">
+                            <Button
+                                size="sm"
+                                class="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                                @click="reanudarPendiente"
+                            >
+                                Seguir escuchando
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                class="border-amber-400/40 bg-transparent text-amber-100 hover:bg-amber-950"
+                                @click="cerrarPendiente"
+                            >
+                                Terminarla
+                            </Button>
                         </div>
                     </div>
 
-                    <div
-                        v-else-if="reunionMostrada.estado === 'error'"
-                        class="flex flex-col gap-3 rounded-lg border border-rose-400/30 bg-rose-950/20 p-4 text-sm"
-                    >
+                    <template v-if="reunion && estado !== 'inactivo'">
+                        <dl class="grid grid-cols-2 gap-y-2 text-sm">
+                            <dt class="text-cyan-200/50">Título</dt>
+                            <dd class="truncate text-right">
+                                {{ reunion.titulo || 'Sin título' }}
+                            </dd>
+                            <dt class="text-cyan-200/50">Inicio</dt>
+                            <dd class="text-right">
+                                {{ formatearHora(reunion.iniciada_en) }}
+                            </dd>
+                        </dl>
+
+                        <div v-if="subidas.length" class="flex flex-col gap-2">
+                            <h3
+                                class="font-mono text-xs tracking-[0.3em] text-cyan-400/60 uppercase"
+                            >
+                                Fragmentos
+                            </h3>
+                            <ul class="flex flex-col gap-1.5 text-sm">
+                                <li
+                                    v-for="subida in subidas"
+                                    :key="subida.orden"
+                                    class="flex items-center justify-between gap-2 rounded border border-cyan-500/10 bg-cyan-950/20 px-3 py-1.5"
+                                    :title="subida.error"
+                                >
+                                    <span class="font-mono">
+                                        #{{
+                                            String(subida.orden).padStart(
+                                                2,
+                                                '0',
+                                            )
+                                        }}
+                                    </span>
+                                    <span class="text-cyan-200/50 tabular-nums">
+                                        {{ formatearTiempo(subida.duracion) }} ·
+                                        {{
+                                            (
+                                                subida.tamano /
+                                                1024 /
+                                                1024
+                                            ).toFixed(1)
+                                        }}
+                                        MB
+                                    </span>
+                                    <span
+                                        class="text-xs"
+                                        :class="iconoSubida[subida.estado]"
+                                    >
+                                        {{ subida.estado }}
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+
                         <p
-                            class="flex items-center gap-2 font-medium text-rose-200"
+                            v-else-if="escuchando"
+                            class="text-sm text-cyan-200/50"
                         >
-                            <CircleAlert class="size-4" />
-                            Algunos fragmentos no se pudieron transcribir
+                            El audio se guarda en fragmentos de
+                            {{ Math.round(grabacion.fragmentoSegundos / 60) }}
+                            minutos. El primero aparecerá aquí al completarse.
                         </p>
-                        <Button
-                            size="sm"
-                            :disabled="reprocesando"
-                            class="self-start bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-                            @click="reprocesar"
-                        >
-                            <RotateCw />
-                            Reintentar transcripción
-                        </Button>
-                    </div>
+                    </template>
 
-                    <p
-                        v-else-if="reunionMostrada.estado === 'completada'"
-                        class="flex items-center gap-2 text-sm font-medium text-emerald-300"
-                    >
-                        <CircleCheck class="size-4" />
-                        Transcripción lista
-                    </p>
-
-                    <ul
-                        v-if="
-                            reunionMostrada.estado !== 'completada' &&
-                            fragmentos.length
-                        "
-                        class="flex flex-col gap-1.5 text-sm"
-                    >
-                        <li
-                            v-for="fragmento in fragmentos"
-                            :key="fragmento.orden"
-                            class="flex items-center justify-between gap-2 rounded border border-cyan-500/10 bg-cyan-950/20 px-3 py-1.5"
-                            :title="fragmento.error ?? undefined"
-                        >
-                            <span class="font-mono">
-                                #{{ String(fragmento.orden).padStart(2, '0') }}
-                            </span>
-                            <span
-                                class="text-xs"
-                                :class="colorFragmento[fragmento.estado]"
-                            >
-                                {{ textoFragmento[fragmento.estado] }}
-                            </span>
-                        </li>
-                    </ul>
-
-                    <ol
-                        v-if="segmentos.length"
-                        class="flex max-h-[55vh] flex-col gap-3 overflow-y-auto pr-1 text-sm"
-                    >
-                        <li
-                            v-for="(segmento, indice) in segmentos"
-                            :key="indice"
-                            class="flex flex-col gap-0.5"
-                        >
-                            <span
-                                class="font-mono text-[11px] text-cyan-400/60"
-                            >
+                    <template v-else-if="reunionMostrada && !pendiente">
+                        <dl class="grid grid-cols-2 gap-y-2 text-sm">
+                            <dt class="text-cyan-200/50">Título</dt>
+                            <dd class="truncate text-right">
+                                {{ reunionMostrada.titulo || 'Sin título' }}
+                            </dd>
+                            <dt class="text-cyan-200/50">Inicio</dt>
+                            <dd class="text-right">
+                                {{ formatearHora(reunionMostrada.iniciada_en) }}
+                            </dd>
+                            <dt class="text-cyan-200/50">Duración</dt>
+                            <dd class="text-right tabular-nums">
                                 {{
                                     formatearTiempo(
-                                        Math.floor(segmento.inicio_segundos),
+                                        reunionMostrada.duracion_segundos ?? 0,
                                     )
                                 }}
-                                <template v-if="segmento.hablante">
-                                    · Hablante {{ segmento.hablante }}
-                                </template>
-                            </span>
-                            <p class="leading-relaxed text-cyan-50/90">
-                                {{ segmento.texto }}
-                            </p>
-                        </li>
-                    </ol>
-                </template>
+                            </dd>
+                        </dl>
 
-                <p v-else-if="!pendiente" class="text-sm text-cyan-200/50">
-                    Presiona <strong class="text-cyan-100">Escuchar</strong>
-                    al iniciar la reunión y
-                    <strong class="text-cyan-100">Terminar</strong> al
-                    finalizar.
-                </p>
+                        <div
+                            v-if="reunionMostrada.estado === 'procesando'"
+                            class="flex flex-col gap-3 rounded-lg border border-cyan-400/30 bg-cyan-950/30 p-4 text-sm"
+                            aria-live="polite"
+                        >
+                            <p class="flex items-center gap-2 font-medium">
+                                <LoaderCircle class="size-4 animate-spin" />
+                                <template
+                                    v-if="reunionMostrada.transcripcion_lista"
+                                >
+                                    Generando el resumen…
+                                </template>
+                                <template v-else>
+                                    Transcribiendo {{ transcritos }} de
+                                    {{ fragmentos.length || '…' }}
+                                </template>
+                            </p>
+                            <div
+                                v-if="!reunionMostrada.transcripcion_lista"
+                                class="h-1 overflow-hidden rounded bg-cyan-950"
+                            >
+                                <div
+                                    class="h-full bg-cyan-400 transition-all"
+                                    :style="{
+                                        width: `${fragmentos.length ? (transcritos / fragmentos.length) * 100 : 0}%`,
+                                    }"
+                                />
+                            </div>
+                        </div>
+
+                        <div
+                            v-else-if="reunionMostrada.estado === 'error'"
+                            class="flex flex-col gap-3 rounded-lg border border-rose-400/30 bg-rose-950/20 p-4 text-sm"
+                        >
+                            <p
+                                class="flex items-center gap-2 font-medium text-rose-200"
+                            >
+                                <CircleAlert class="size-4" />
+                                {{
+                                    reunionMostrada.transcripcion_lista
+                                        ? 'No se pudo generar el resumen'
+                                        : 'Algunos fragmentos no se pudieron transcribir'
+                                }}
+                            </p>
+                            <Button
+                                size="sm"
+                                :disabled="reprocesando"
+                                class="self-start bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                                @click="reprocesar"
+                            >
+                                <RotateCw />
+                                Reintentar
+                            </Button>
+                        </div>
+
+                        <p
+                            v-else-if="reunionMostrada.estado === 'completada'"
+                            class="flex items-center gap-2 text-sm font-medium text-emerald-300"
+                        >
+                            <CircleCheck class="size-4" />
+                            Acta lista
+                        </p>
+
+                        <ul
+                            v-if="
+                                reunionMostrada.estado !== 'completada' &&
+                                fragmentos.length
+                            "
+                            class="flex flex-col gap-1.5 text-sm"
+                        >
+                            <li
+                                v-for="fragmento in fragmentos"
+                                :key="fragmento.orden"
+                                class="flex items-center justify-between gap-2 rounded border border-cyan-500/10 bg-cyan-950/20 px-3 py-1.5"
+                                :title="fragmento.error ?? undefined"
+                            >
+                                <span class="font-mono">
+                                    #{{
+                                        String(fragmento.orden).padStart(2, '0')
+                                    }}
+                                </span>
+                                <span
+                                    class="text-xs"
+                                    :class="colorFragmento[fragmento.estado]"
+                                >
+                                    {{ textoFragmento[fragmento.estado] }}
+                                </span>
+                            </li>
+                        </ul>
+
+                        <div
+                            v-if="
+                                resumen &&
+                                reunionMostrada.estado === 'completada'
+                            "
+                            class="flex flex-col gap-3 text-sm"
+                        >
+                            <p class="leading-relaxed text-cyan-50/90">
+                                {{ resumen.resumen_ejecutivo }}
+                            </p>
+                            <ul
+                                v-if="resumen.temas_tratados.length"
+                                class="flex flex-wrap gap-1.5"
+                            >
+                                <li
+                                    v-for="tema in resumen.temas_tratados"
+                                    :key="tema"
+                                    class="rounded-full border border-cyan-500/30 px-2.5 py-0.5 text-xs text-cyan-100/80"
+                                >
+                                    {{ tema }}
+                                </li>
+                            </ul>
+                            <p class="text-xs text-cyan-200/50">
+                                {{ resumen.acuerdos.length }} acuerdo(s) ·
+                                {{ resumen.pendientes.length }} pendiente(s)
+                            </p>
+                        </div>
+
+                        <Button
+                            v-if="reunionMostrada.estado !== 'procesando'"
+                            size="sm"
+                            variant="outline"
+                            class="self-start border-cyan-500/40 bg-transparent text-cyan-100 hover:bg-cyan-950"
+                            as-child
+                        >
+                            <Link :href="verReunion(reunionMostrada.id)">
+                                <FileText />
+                                Ver acta completa
+                            </Link>
+                        </Button>
+                    </template>
+
+                    <p v-else-if="!pendiente" class="text-sm text-cyan-200/50">
+                        Presiona <strong class="text-cyan-100">Escuchar</strong>
+                        al iniciar la reunión y
+                        <strong class="text-cyan-100">Terminar</strong> al
+                        finalizar.
+                    </p>
+                </div>
             </aside>
         </div>
     </div>

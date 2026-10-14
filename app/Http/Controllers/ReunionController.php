@@ -5,10 +5,10 @@ namespace App\Http\Controllers;
 use App\Enums\EstadoFragmento;
 use App\Enums\EstadoReunion;
 use App\Http\Resources\ReunionResource;
+use App\Jobs\GenerarResumen;
 use App\Jobs\TranscribirFragmento;
 use App\Models\FragmentoAudio;
 use App\Models\Reunion;
-use App\Models\SegmentoTranscripcion;
 use App\Services\CierreReunion;
 use App\Services\EspejoReunion;
 use Illuminate\Http\JsonResponse;
@@ -56,9 +56,9 @@ class ReunionController extends Controller
 
     /**
      * Estado de procesamiento de la reunión. El navegador lo consulta cada
-     * pocos segundos mientras se transcribe.
+     * pocos segundos mientras se transcribe y se genera el resumen.
      */
-    public function show(Reunion $reunion): JsonResponse
+    public function estado(Reunion $reunion): JsonResponse
     {
         $reunion->loadCount('fragmentos');
 
@@ -69,13 +69,9 @@ class ReunionController extends Controller
                 'estado' => $fragmento->estado->value,
                 'error' => $fragmento->error,
             ]),
-            'segmentos' => $reunion->estado === EstadoReunion::Completada
-                ? $reunion->segmentos()->get()->map(fn (SegmentoTranscripcion $segmento) => [
-                    'hablante' => $segmento->hablante,
-                    'inicio_segundos' => $segmento->inicio_segundos,
-                    'texto' => $segmento->texto,
-                ])
-                : [],
+            'resumen' => $reunion->estado === EstadoReunion::Completada
+                ? $reunion->resumen?->contenido
+                : null,
         ]);
     }
 
@@ -118,12 +114,14 @@ class ReunionController extends Controller
     }
 
     /**
-     * Vuelve a encolar los fragmentos que fallaron al transcribirse.
+     * Retoma una reunión que quedó en error: vuelve a transcribir los
+     * fragmentos fallidos o, si la transcripción ya estaba completa, vuelve a
+     * generar el resumen.
      */
     public function reprocesar(Reunion $reunion): JsonResponse
     {
         if ($reunion->estado !== EstadoReunion::Error) {
-            return response()->json(['message' => 'La reunión no tiene fragmentos con error.'], 409);
+            return response()->json(['message' => 'La reunión no tiene errores que reprocesar.'], 409);
         }
 
         $fallidos = $reunion->fragmentos()->where('estado', EstadoFragmento::Error)->get();
@@ -132,7 +130,30 @@ class ReunionController extends Controller
         $reunion->update(['estado' => EstadoReunion::Procesando]);
         $this->espejo->guardar($reunion);
 
-        $fallidos->each(fn (FragmentoAudio $fragmento) => TranscribirFragmento::dispatch($fragmento));
+        if ($fallidos->isNotEmpty()) {
+            $fallidos->each(fn (FragmentoAudio $fragmento) => TranscribirFragmento::dispatch($fragmento));
+        } else {
+            GenerarResumen::dispatch($reunion);
+        }
+
+        return response()->json([
+            'reunion' => (new ReunionResource($reunion->refresh()->loadCount('fragmentos')))->resolve(),
+        ]);
+    }
+
+    /**
+     * Genera una versión nueva del resumen de una reunión completada.
+     */
+    public function regenerarResumen(Reunion $reunion): JsonResponse
+    {
+        if ($reunion->estado !== EstadoReunion::Completada) {
+            return response()->json(['message' => 'La reunión todavía no está completada.'], 409);
+        }
+
+        $reunion->update(['estado' => EstadoReunion::Procesando]);
+        $this->espejo->guardar($reunion);
+
+        GenerarResumen::dispatch($reunion);
 
         return response()->json([
             'reunion' => (new ReunionResource($reunion->refresh()->loadCount('fragmentos')))->resolve(),

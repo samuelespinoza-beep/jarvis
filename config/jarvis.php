@@ -36,4 +36,32 @@ return [
         'timeout_segundos' => 300,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Resumen
+    |--------------------------------------------------------------------------
+    |
+    | Modelo de texto que redacta el acta. GPT-6 Luna es el más económico; si
+    | los resúmenes quedan cortos se puede subir a gpt-6.1-sol.
+    |
+    */
+
+    'resumen' => [
+        'modelo' => env('JARVIS_MODELO_RESUMEN', 'gpt-6-luna'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Chat
+    |--------------------------------------------------------------------------
+    |
+    | Modelo del chat con Jarvis, que puede buscar en internet, leer páginas,
+    | ver videos de YouTube y consultar las reuniones guardadas.
+    |
+    */
+
+    'chat' => [
+        'modelo' => env('JARVIS_MODELO_CHAT', 'gpt-6-luna'),
+    ],
+
 ];

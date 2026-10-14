@@ -42,6 +42,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Conversations
+    |--------------------------------------------------------------------------
+    |
+    | Jarvis no pide a la IA un título para cada conversación nueva (sería una
+    | llamada extra a OpenAI): usa el inicio del primer mensaje.
+    |
+    */
+
+    'conversations' => [
+        'generate_title' => false,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | AI Providers
     |--------------------------------------------------------------------------
     |

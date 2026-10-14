@@ -7,6 +7,7 @@ export type Reunion = {
     iniciada_en: string;
     finalizada_en: string | null;
     duracion_segundos: number | null;
+    transcripcion_lista: boolean;
     fragmentos_subidos?: number;
 };
 
@@ -31,4 +32,28 @@ export type SegmentoTranscripcion = {
 export type ConfigGrabacion = {
     fragmentoSegundos: number;
     audioBitsPorSegundo: number;
+};
+
+export type PuntoResumen = {
+    tema: string;
+    detalle: string;
+    minuto_aprox: number | null;
+};
+
+export type AcuerdoResumen = {
+    descripcion: string;
+    responsable: string | null;
+    fecha_limite: string | null;
+};
+
+export type ContenidoResumen = {
+    titulo_sugerido: string;
+    resumen_ejecutivo: string;
+    temas_tratados: string[];
+    puntos_principales: PuntoResumen[];
+    puntos_secundarios: PuntoResumen[];
+    acuerdos: AcuerdoResumen[];
+    pendientes: string[];
+    riesgos_o_puntos_criticos: string[];
+    sugerencias_de_mejora: string[];
 };

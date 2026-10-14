@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -18,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon $iniciada_en
  * @property Carbon|null $finalizada_en
  * @property int|null $duracion_segundos
+ * @property Carbon|null $transcripcion_lista_en
  * @property int $creada_por
  * @property int $costo_audio_segundos
  * @property int $costo_tokens
@@ -41,6 +43,7 @@ class Reunion extends Model
             'estado' => EstadoReunion::class,
             'iniciada_en' => 'datetime',
             'finalizada_en' => 'datetime',
+            'transcripcion_lista_en' => 'datetime',
         ];
     }
 
@@ -66,6 +69,36 @@ class Reunion extends Model
     public function segmentos(): HasMany
     {
         return $this->hasMany(SegmentoTranscripcion::class)->orderBy('inicio_segundos')->orderBy('orden');
+    }
+
+    /**
+     * @return HasMany<Resumen, $this>
+     */
+    public function resumenes(): HasMany
+    {
+        return $this->hasMany(Resumen::class)->orderByDesc('version');
+    }
+
+    /**
+     * @return HasOne<Resumen, $this>
+     */
+    public function resumen(): HasOne
+    {
+        return $this->hasOne(Resumen::class)->latestOfMany('version');
+    }
+
+    /**
+     * Transcripción en texto plano con minuto y hablante, lista para la IA.
+     */
+    public function transcripcionComoTexto(): string
+    {
+        return $this->segmentos()->get()->map(function (SegmentoTranscripcion $segmento) {
+            $segundos = (int) $segmento->inicio_segundos;
+            $minuto = sprintf('%02d:%02d', intdiv($segundos, 60), $segundos % 60);
+            $hablante = $segmento->hablante ? "Hablante {$segmento->hablante}" : 'Hablante';
+
+            return "[{$minuto}] {$hablante}: {$segmento->texto}";
+        })->implode("\n");
     }
 
     /**

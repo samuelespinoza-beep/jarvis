@@ -3,29 +3,25 @@ import { onBeforeUnmount, ref, watch } from 'vue';
 import type { Ref } from 'vue';
 import {
     reprocesar as reprocesarReunion,
-    show as verReunion,
+    estado as estadoReunion,
 } from '@/actions/App/Http/Controllers/ReunionController';
-import type {
-    FragmentoProcesado,
-    Reunion,
-    SegmentoTranscripcion,
-} from '@/types';
+import type { ContenidoResumen, FragmentoProcesado, Reunion } from '@/types';
 
 type RespuestaEstado = {
     reunion: Reunion;
     fragmentos: FragmentoProcesado[];
-    segmentos: SegmentoTranscripcion[];
+    resumen: ContenidoResumen | null;
 };
 
 const INTERVALO_MS = 3000;
 
 /**
- * Consulta el avance de una reunión terminada hasta que su transcripción
- * esté completa o falle.
+ * Consulta el avance de una reunión terminada hasta que su transcripción y
+ * su resumen estén listos o algo falle.
  */
 export function useSeguimientoReunion(reunion: Ref<Reunion | null>) {
     const fragmentos = ref<FragmentoProcesado[]>([]);
-    const segmentos = ref<SegmentoTranscripcion[]>([]);
+    const resumen = ref<ContenidoResumen | null>(null);
     const reprocesando = ref(false);
 
     let temporizador: number | undefined;
@@ -37,7 +33,7 @@ export function useSeguimientoReunion(reunion: Ref<Reunion | null>) {
         try {
             const respuesta = await http.getClient().request({
                 method: 'get',
-                url: verReunion.url(id),
+                url: estadoReunion.url(id),
                 headers: { Accept: 'application/json' },
             });
 
@@ -49,7 +45,7 @@ export function useSeguimientoReunion(reunion: Ref<Reunion | null>) {
             const datos = JSON.parse(respuesta.data) as RespuestaEstado;
 
             fragmentos.value = datos.fragmentos;
-            segmentos.value = datos.segmentos;
+            resumen.value = datos.resumen;
             reunion.value = datos.reunion;
         } catch {
             // Un fallo puntual de red no detiene el seguimiento; se reintenta en la próxima vuelta.
@@ -95,16 +91,16 @@ export function useSeguimientoReunion(reunion: Ref<Reunion | null>) {
 
             if (!id || estado === 'grabando') {
                 fragmentos.value = [];
-                segmentos.value = [];
+                resumen.value = null;
 
                 return;
             }
 
-            // Una reunión completada solo se consulta una vez, para traer la transcripción.
+            // Una reunión completada solo se consulta una vez, para traer el resumen.
             if (
                 estado === 'procesando' ||
                 id !== idAnterior ||
-                segmentos.value.length === 0
+                resumen.value === null
             ) {
                 void consultar(id);
             }
@@ -114,5 +110,5 @@ export function useSeguimientoReunion(reunion: Ref<Reunion | null>) {
 
     onBeforeUnmount(() => window.clearTimeout(temporizador));
 
-    return { fragmentos, segmentos, reprocesando, reprocesar };
+    return { fragmentos, resumen, reprocesando, reprocesar };
 }

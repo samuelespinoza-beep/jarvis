@@ -162,6 +162,26 @@
     --sidebar: hsl(240 5.9% 10%);
 }
 
+/*
+ * Tema HUD de Jarvis para las pantallas de acceso. Se aplica junto con la
+ * clase "dark", así que debe ir después de .dark para sobrescribirla.
+ */
+.tema-jarvis {
+    --background: hsl(216 64% 4%);
+    --foreground: hsl(186 100% 94%);
+    --card: hsl(210 60% 6%);
+    --card-foreground: hsl(186 100% 94%);
+    --primary: hsl(188 86% 53%);
+    --primary-foreground: hsl(222 47% 6%);
+    --muted: hsl(195 50% 12%);
+    --muted-foreground: hsl(188 30% 62%);
+    --accent: hsl(195 60% 14%);
+    --accent-foreground: hsl(186 100% 94%);
+    --border: hsl(188 86% 53% / 0.25);
+    --input: hsl(188 86% 53% / 0.3);
+    --ring: hsl(188 86% 53%);
+}
+
 @layer base {
     * {
         @apply border-border outline-ring/50;

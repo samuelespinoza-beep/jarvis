@@ -2,6 +2,7 @@
 
 namespace Tests;
 
+use App\Ai\Agents\ResumidorReunion;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Http;
 use Laravel\Ai\Transcription;
@@ -18,6 +19,8 @@ abstract class TestCase extends BaseTestCase
         Http::preventStrayRequests();
         Http::allowStrayRequests(['http://127.0.0.1:*', 'http://localhost:*']);
         Transcription::fake()->preventStrayTranscriptions();
+        // Sin respuesta definida, el fake devuelve datos inventados que cumplen el esquema del acta.
+        ResumidorReunion::fake();
     }
 
     protected function skipUnlessFortifyHas(string $feature, ?string $message = null): void

@@ -4,14 +4,16 @@ namespace App\Services;
 
 use App\Enums\EstadoFragmento;
 use App\Enums\EstadoReunion;
+use App\Jobs\GenerarResumen;
 use App\Models\Reunion;
 use App\Models\SegmentoTranscripcion;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * Decide si una reunión terminada ya tiene todo su audio transcrito.
- * Se llama al terminar la reunión y cada vez que un fragmento termina de
- * transcribirse, así que puede ejecutarse varias veces sin efectos dobles.
+ * Decide si una reunión terminada ya tiene todo su audio transcrito y, en
+ * ese caso, encola la generación del resumen. Se llama al terminar la
+ * reunión y cada vez que un fragmento termina de transcribirse, así que
+ * puede ejecutarse varias veces sin efectos dobles.
  */
 class CierreReunion
 {
@@ -31,15 +33,21 @@ class CierreReunion
             return;
         }
 
-        $nuevoEstado = $estados->contains(EstadoFragmento::Error)
-            ? EstadoReunion::Error
-            : EstadoReunion::Completada;
+        $transcrita = ! $estados->contains(EstadoFragmento::Error);
 
-        // Solo uno de los procesos que llegue aquí a la vez cambia el estado.
-        $actualizada = Reunion::query()
-            ->whereKey($reunion->id)
-            ->where('estado', EstadoReunion::Procesando)
-            ->update(['estado' => $nuevoEstado]);
+        // Solo uno de los procesos que llegue aquí a la vez cambia la reunión.
+        if (! $transcrita) {
+            $actualizada = Reunion::query()
+                ->whereKey($reunion->id)
+                ->where('estado', EstadoReunion::Procesando)
+                ->update(['estado' => EstadoReunion::Error]);
+        } else {
+            $actualizada = Reunion::query()
+                ->whereKey($reunion->id)
+                ->where('estado', EstadoReunion::Procesando)
+                ->whereNull('transcripcion_lista_en')
+                ->update(['transcripcion_lista_en' => now()]);
+        }
 
         if (! $actualizada) {
             return;
@@ -47,8 +55,9 @@ class CierreReunion
 
         $reunion->refresh();
 
-        if ($nuevoEstado === EstadoReunion::Completada) {
+        if ($transcrita) {
             $this->guardarTranscripcion($reunion);
+            GenerarResumen::dispatch($reunion);
         }
 
         $this->espejo->guardar($reunion);

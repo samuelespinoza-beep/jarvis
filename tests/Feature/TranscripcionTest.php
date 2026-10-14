@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\EstadoFragmento;
 use App\Enums\EstadoReunion;
+use App\Jobs\GenerarResumen;
 use App\Jobs\TranscribirFragmento;
 use App\Models\Reunion;
 use App\Models\User;
@@ -112,15 +113,17 @@ class TranscripcionTest extends TestCase
         $this->assertSame("Hola.\nAdiós.", $transcripcion['texto']);
         $this->assertSame(1, $transcripcion['segmentos'][0]['fragmento']);
 
-        $this->getJson(route('reuniones.show', $reunion))
+        $this->getJson(route('reuniones.estado', $reunion))
             ->assertOk()
             ->assertJsonPath('reunion.estado', 'completada')
-            ->assertJsonPath('fragmentos.0.estado', 'listo')
-            ->assertJsonPath('segmentos.1.texto', 'Adiós.')
-            ->assertJsonPath('segmentos.1.hablante', 'B');
+            ->assertJsonPath('reunion.transcripcion_lista', true)
+            ->assertJsonPath('fragmentos.0.estado', 'listo');
+
+        $this->assertSame(['Hola.', 'Adiós.'], $reunion->segmentos()->pluck('texto')->all());
+        $this->assertSame(['A', 'B'], $reunion->segmentos()->pluck('hablante')->all());
     }
 
-    public function test_meeting_is_completed_when_the_last_fragment_finishes_after_finishing()
+    public function test_summary_is_queued_when_the_last_fragment_finishes_after_finishing()
     {
         Queue::fake();
         Transcription::fake([$this->respuesta('Hola.', 'Adiós.')]);
@@ -131,7 +134,7 @@ class TranscripcionTest extends TestCase
         $this->postJson(route('reuniones.terminar', $reunion))
             ->assertJsonPath('reunion.estado', 'procesando');
 
-        $this->getJson(route('reuniones.show', $reunion))->assertJsonPath('segmentos', []);
+        $this->getJson(route('reuniones.estado', $reunion))->assertJsonPath('resumen', null);
 
         Queue::assertPushed(TranscribirFragmento::class, function (TranscribirFragmento $job) {
             $job->handle(app(CierreReunion::class));
@@ -139,8 +142,11 @@ class TranscripcionTest extends TestCase
             return true;
         });
 
-        $this->assertSame(EstadoReunion::Completada, $reunion->refresh()->estado);
+        $reunion->refresh();
+        $this->assertSame(EstadoReunion::Procesando, $reunion->estado);
+        $this->assertNotNull($reunion->transcripcion_lista_en);
         Storage::disk('local')->assertExists("reuniones/{$reunion->id}/transcripcion.json");
+        Queue::assertPushed(GenerarResumen::class, 1);
     }
 
     public function test_failed_fragments_mark_the_meeting_as_error_and_can_be_reprocessed()

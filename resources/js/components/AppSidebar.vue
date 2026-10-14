@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, FolderGit2, Radar } from '@lucide/vue';
+import { BookOpen, FolderGit2, History, Radar } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -14,6 +14,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { index as historial } from '@/actions/App/Http/Controllers/HistorialController';
 import { jarvis } from '@/routes';
 import type { NavItem } from '@/types';
 
@@ -22,6 +23,11 @@ const mainNavItems: NavItem[] = [
         title: 'Jarvis',
         href: jarvis(),
         icon: Radar,
+    },
+    {
+        title: 'Reuniones',
+        href: historial(),
+        icon: History,
     },
 ];
 

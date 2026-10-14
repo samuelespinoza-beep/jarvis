@@ -25,6 +25,7 @@ class ReunionResource extends JsonResource
             'iniciada_en' => $this->iniciada_en->toIso8601String(),
             'finalizada_en' => $this->finalizada_en?->toIso8601String(),
             'duracion_segundos' => $this->duracion_segundos,
+            'transcripcion_lista' => $this->transcripcion_lista_en !== null,
             'fragmentos_subidos' => $this->whenCounted('fragmentos'),
         ];
     }
