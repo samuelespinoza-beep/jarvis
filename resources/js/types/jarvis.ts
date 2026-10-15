@@ -42,6 +42,11 @@ export type ConfigGrabacion = {
     enVivo: boolean;
 };
 
+export type ConfigVoces = {
+    porDefecto: string;
+    lista: { id: string; descripcion: string }[];
+};
+
 export type ConfigDocumentos = {
     formatos: string[];
     maxKb: number;

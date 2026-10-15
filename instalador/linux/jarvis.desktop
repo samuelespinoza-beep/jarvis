@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Asistente IA
+Comment=Asistente de reuniones del directorio
+Exec=@DESTINO@/jarvis
+Icon=@DESTINO@/app/public/apple-touch-icon.png
+Terminal=false
+Categories=Office;AudioVideo;

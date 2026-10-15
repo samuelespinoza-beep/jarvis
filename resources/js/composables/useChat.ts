@@ -28,7 +28,9 @@ type EventoStream = {
     message?: string;
 };
 
-const ACTIVIDADES: Record<string, string> = {
+// Qué mostrar mientras el asistente usa cada herramienta (también en la conversación en vivo).
+export const ACTIVIDADES: Record<string, string> = {
+    BuscarEnInternet: 'Buscando en internet…',
     LeerPagina: 'Leyendo la página…',
     UltimosVideosYoutube: 'Revisando YouTube…',
     ConsultarReuniones: 'Buscando en las reuniones…',
@@ -48,17 +50,23 @@ export function useChat(reunionId: Ref<string | null>) {
     const enviando = ref(false);
     const error = ref<string | null>(null);
 
-    async function cargar() {
+    /**
+     * Trae los mensajes guardados: los de la reunión del chat o, en el chat
+     * general, los de la conversación indicada.
+     */
+    async function cargar(conversacion: string | null = null) {
         const reunion = reunionId.value;
 
-        if (!reunion) {
+        if (!reunion && !conversacion) {
             return;
         }
 
         try {
             const respuesta = await http.getClient().request({
                 method: 'get',
-                url: cargarMensajes.url({ query: { reunion } }),
+                url: cargarMensajes.url({
+                    query: reunion ? { reunion } : { conversacion },
+                }),
                 headers: { Accept: 'application/json' },
             });
 
@@ -177,7 +185,8 @@ export function useChat(reunionId: Ref<string | null>) {
                         break;
                     case 'error':
                         throw new Error(
-                            evento.message || 'Jarvis tuvo un problema.',
+                            evento.message ||
+                                'El Asistente IA tuvo un problema.',
                         );
                     default:
                         if (evento.type.includes('search')) {
@@ -187,11 +196,15 @@ export function useChat(reunionId: Ref<string | null>) {
             });
 
             if (!respuesta.contenido.trim()) {
-                throw new Error('Jarvis no devolvió ninguna respuesta.');
+                throw new Error(
+                    'El Asistente IA no devolvió ninguna respuesta.',
+                );
             }
         } catch (e) {
             error.value =
-                e instanceof Error ? e.message : 'Jarvis no pudo responder.';
+                e instanceof Error
+                    ? e.message
+                    : 'El Asistente IA no pudo responder.';
 
             if (!enviado) {
                 // No llegó a Jarvis: se quitan los dos mensajes y la vista conserva lo escrito.
@@ -223,7 +236,15 @@ export function useChat(reunionId: Ref<string | null>) {
         { immediate: true },
     );
 
-    return { mensajes, conversacionId, enviando, error, nueva, enviar };
+    return {
+        mensajes,
+        conversacionId,
+        enviando,
+        error,
+        nueva,
+        enviar,
+        recargar: cargar,
+    };
 }
 
 async function mensajeDeFallo(respuesta: Response): Promise<string> {
@@ -243,7 +264,7 @@ async function mensajeDeFallo(respuesta: Response): Promise<string> {
         ? 'Demasiados mensajes seguidos. Espera un momento.'
         : respuesta.status === 419
           ? 'La sesión expiró. Recarga la página.'
-          : 'Jarvis no pudo responder. Intenta de nuevo.';
+          : 'El Asistente IA no pudo responder. Intenta de nuevo.';
 }
 
 async function leerEventos(

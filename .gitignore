@@ -43,3 +43,7 @@ yarn-error.log
 /opencode.json
 /opencode.jsonc
 /docs
+
+# Instaladores generados y descargas (PHP, etc.)
+/dist
+/instalador/.descargas

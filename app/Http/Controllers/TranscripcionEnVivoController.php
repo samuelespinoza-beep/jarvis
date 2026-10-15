@@ -12,8 +12,8 @@ class TranscripcionEnVivoController extends Controller
     /**
      * Entrega al navegador una llave temporal de OpenAI Realtime para que
      * transmita el micrófono directamente y reciba el texto en vivo, donde
-     * busca las órdenes de voz ("Jarvis, pausa la reunión"). También sirve
-     * con la reunión en pausa, para poder decir "Jarvis, reanuda". La llave
+     * busca las órdenes de voz ("Asistente, pausa la reunión"). También sirve
+     * con la reunión en pausa, para poder decir "Asistente, reanuda". La llave
      * real (OPENAI_API_KEY) nunca sale del servidor.
      */
     public function __invoke(Reunion $reunion): JsonResponse
@@ -44,8 +44,8 @@ class TranscripcionEnVivoController extends Controller
                                 'transcription' => [
                                     'model' => config('jarvis.en_vivo.modelo'),
                                     'language' => config('jarvis.transcripcion.idioma'),
-                                    // Ayuda a reconocer la palabra de activación en vez de "Yarvis" o "Jarvi".
-                                    'prompt' => 'Jarvis',
+                                    // Ayuda a reconocer la palabra de activación al inicio de la frase.
+                                    'prompt' => 'Asistente',
                                 ],
                                 // OpenAI detecta las pausas al hablar y cierra cada frase.
                                 'turn_detection' => [

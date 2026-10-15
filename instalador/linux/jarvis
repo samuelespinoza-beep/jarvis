@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Abre el Asistente IA: arranca el servidor y la cola si no están corriendo y abre el navegador.
+systemctl --user start jarvis-servidor jarvis-cola
+
+# Espera hasta 15 s a que el servidor responda.
+for _ in $(seq 1 30); do
+    (exec 3<>/dev/tcp/127.0.0.1/8073) 2>/dev/null && break
+    sleep 0.5
+done
+
+xdg-open "http://127.0.0.1:8073" >/dev/null 2>&1 &

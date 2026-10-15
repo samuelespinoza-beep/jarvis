@@ -52,7 +52,7 @@ function minuto(punto: PuntoResumen): string | null {
                 <li
                     v-for="(punto, indice) in seccion.puntos"
                     :key="indice"
-                    class="border-l-2 border-cyan-500/60 pl-3"
+                    class="border-l-2 border-hud-acento/60 pl-3"
                 >
                     <p class="font-medium">
                         {{ punto.tema }}

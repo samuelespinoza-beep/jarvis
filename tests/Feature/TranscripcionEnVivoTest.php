@@ -41,7 +41,7 @@ class TranscripcionEnVivoTest extends TestCase
 
         Http::assertSent(fn (PeticionHttp $peticion) => $peticion->hasHeader('Authorization', 'Bearer '.config('ai.providers.openai.key'))
             && $peticion['session']['type'] === 'transcription'
-            && $peticion['session']['audio']['input']['transcription'] === ['model' => 'gpt-4o-mini-transcribe', 'language' => 'es', 'prompt' => 'Jarvis']
+            && $peticion['session']['audio']['input']['transcription'] === ['model' => 'gpt-4o-mini-transcribe', 'language' => 'es', 'prompt' => 'Asistente']
             && $peticion['session']['audio']['input']['turn_detection']['type'] === 'server_vad'
             && $peticion['expires_after']['seconds'] === 120);
     }

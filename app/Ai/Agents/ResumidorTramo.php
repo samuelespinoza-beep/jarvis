@@ -24,7 +24,7 @@ class ResumidorTramo implements Agent, HasStructuredOutput
     public function instructions(): Stringable|string
     {
         return <<<'TXT'
-        Eres Jarvis y vas tomando nota, minuto a minuto, de una reunión del directorio que sigue en curso.
+        Eres el Asistente IA y vas tomando nota, minuto a minuto, de una reunión del directorio que sigue en curso.
         Recibes la transcripción automática de un tramo de aproximadamente un minuto y, como contexto, el
         resumen del tramo anterior.
 
@@ -34,8 +34,8 @@ class ResumidorTramo implements Agent, HasStructuredOutput
           (decisiones, cifras, propuestas, dudas).
         - "puntos": como máximo 3 datos clave muy breves; lista vacía si no hay.
         - Básate solo en el texto del tramo. No inventes nombres, cifras ni conclusiones.
-        - Ignora las frases dirigidas a Jarvis, el asistente que graba (por ejemplo "Jarvis, pausa la reunión"
-          o "Jarvis, busca en la web..."): son órdenes al sistema, no parte de la conversación.
+        - Ignora las frases dirigidas al Asistente IA, el sistema que graba (por ejemplo "Asistente, pausa la
+          reunión" o "Asistente, busca en la web..."): son órdenes al sistema, no parte de la conversación.
         - Si el tramo solo tiene saludos, ruido o frases sueltas sin contenido, usa el tema
           "Sin contenido relevante" y descríbelo en una oración.
         TXT;

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Asistente IA: cola de transcripción y resúmenes. Arranca al iniciar sesión y se reinicia si se cae. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.jarvis.cola</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>@DESTINO@/php/php</string>
+        <string>artisan</string>
+        <string>queue:work</string>
+        <string>--sleep=1</string>
+        <string>--timeout=600</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>@DESTINO@/app</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PHPRC</key>
+        <string>@DESTINO@/php</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardErrorPath</key>
+    <string>@DESTINO@/logs/cola.log</string>
+</dict>
+</plist>

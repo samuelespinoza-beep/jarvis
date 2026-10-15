@@ -18,6 +18,8 @@ let cuadro = 0;
 let observador: ResizeObserver | null = null;
 let datos = new Uint8Array(0);
 let nivelSuavizado = 0;
+// Color de acento del tema (--hud-acento-rgb en app.css), leído al montar.
+let acentoRgb = '249, 115, 22';
 
 function ajustarTamano() {
     const canvas = lienzo.value;
@@ -96,8 +98,9 @@ function dibujar(tiempo: number) {
 
     nivelSuavizado += (nivel - nivelSuavizado) * 0.2;
 
-    const intensidad = activo ? 1 : 0.45;
-    const cian = (alfa: number) => `rgba(34, 211, 238, ${alfa * intensidad})`;
+    // En reposo se atenúa, pero sin desaparecer sobre el fondo blanco.
+    const intensidad = activo ? 1 : 0.75;
+    const acento = (alfa: number) => `rgba(${acentoRgb}, ${alfa * intensidad})`;
     const respiracion = activo ? 0 : Math.sin(t * 1.2) * 0.03;
 
     ctx.clearRect(0, 0, lado, lado);
@@ -106,15 +109,15 @@ function dibujar(tiempo: number) {
 
     // Resplandor de fondo.
     const halo = ctx.createRadialGradient(0, 0, r * 0.05, 0, 0, r * 0.95);
-    halo.addColorStop(0, cian(0.18 + nivelSuavizado * 0.6));
-    halo.addColorStop(1, 'rgba(34, 211, 238, 0)');
+    halo.addColorStop(0, acento(0.18 + nivelSuavizado * 0.6));
+    halo.addColorStop(1, `rgba(${acentoRgb}, 0)`);
     ctx.fillStyle = halo;
     ctx.fillRect(-r, -r, lado, lado);
 
     // Anillos exteriores girando en sentidos opuestos.
-    anillo(ctx, r * 0.92, r * 0.008, cian(0.35), 120, 0.55, t * 0.05);
-    anillo(ctx, r * 0.86, r * 0.02, cian(0.55), 6, 0.35, -t * 0.25);
-    anillo(ctx, r * 0.8, r * 0.006, cian(0.4), 3, 0.15, t * 0.4);
+    anillo(ctx, r * 0.92, r * 0.008, acento(0.35), 120, 0.55, t * 0.05);
+    anillo(ctx, r * 0.86, r * 0.02, acento(0.55), 6, 0.35, -t * 0.25);
+    anillo(ctx, r * 0.8, r * 0.006, acento(0.4), 3, 0.15, t * 0.4);
 
     // Barras radiales del espectro de audio.
     const radioBarras = r * 0.52;
@@ -127,19 +130,20 @@ function dibujar(tiempo: number) {
 
         ctx.save();
         ctx.rotate(angulo);
-        ctx.fillStyle = cian(0.35 + valor * 0.65);
+        ctx.fillStyle = acento(0.35 + valor * 0.65);
         ctx.fillRect(radioBarras, -r * 0.006, largo, r * 0.012);
         ctx.restore();
     }
 
-    anillo(ctx, r * 0.48, r * 0.012, cian(0.7), 4, 0.08, -t * 0.6);
+    anillo(ctx, r * 0.48, r * 0.012, acento(0.7), 4, 0.08, -t * 0.6);
 
     // Núcleo.
     const radioNucleo = r * (0.3 + nivelSuavizado * 0.18 + respiracion);
     const nucleo = ctx.createRadialGradient(0, 0, 0, 0, 0, radioNucleo);
-    nucleo.addColorStop(0, `rgba(236, 254, 255, ${0.95 * intensidad})`);
-    nucleo.addColorStop(0.35, cian(0.85));
-    nucleo.addColorStop(1, 'rgba(8, 47, 73, 0)');
+    // Centro claro y cálido, como el reactor de Iron Man, que se funde en el acento.
+    nucleo.addColorStop(0, `rgba(255, 237, 213, ${0.95 * intensidad})`);
+    nucleo.addColorStop(0.35, acento(0.85));
+    nucleo.addColorStop(1, `rgba(${acentoRgb}, 0)`);
     ctx.fillStyle = nucleo;
     ctx.beginPath();
     ctx.arc(0, 0, radioNucleo, 0, Math.PI * 2);
@@ -149,6 +153,11 @@ function dibujar(tiempo: number) {
 }
 
 onMounted(() => {
+    acentoRgb =
+        getComputedStyle(document.documentElement)
+            .getPropertyValue('--hud-acento-rgb')
+            .trim() || acentoRgb;
+
     ajustarTamano();
     observador = new ResizeObserver(ajustarTamano);
 

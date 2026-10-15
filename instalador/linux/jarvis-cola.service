@@ -1,0 +1,13 @@
+[Unit]
+Description=Asistente IA (cola de transcripción y resúmenes)
+
+[Service]
+WorkingDirectory=@DESTINO@/app
+Environment=PHPRC=@DESTINO@/php
+# La transcripción de un minuto puede tardar; el límite por defecto (60 s) la cortaría.
+ExecStart=@DESTINO@/php/php artisan queue:work --sleep=1 --timeout=600
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

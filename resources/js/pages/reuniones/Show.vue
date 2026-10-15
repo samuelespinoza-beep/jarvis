@@ -188,7 +188,7 @@ function cambiarVersion(evento: Event) {
 
             <p
                 v-if="error"
-                class="flex items-center gap-2 text-sm text-rose-500"
+                class="flex items-center gap-2 text-sm text-rose-600"
                 role="alert"
             >
                 <CircleAlert class="size-4" /> {{ error }}
@@ -197,7 +197,7 @@ function cambiarVersion(evento: Event) {
 
         <div
             v-if="reunion.estado === 'procesando'"
-            class="flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-4 text-sm"
+            class="flex items-center gap-2 rounded-lg border border-hud-acento/30 bg-hud-acento/5 p-4 text-sm"
             aria-live="polite"
         >
             <LoaderCircle class="size-4 animate-spin" />
@@ -210,9 +210,9 @@ function cambiarVersion(evento: Event) {
 
         <div
             v-else-if="reunion.estado === 'error'"
-            class="flex items-center gap-2 rounded-lg border border-rose-500/30 bg-rose-500/5 p-4 text-sm"
+            class="flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-500/5 p-4 text-sm"
         >
-            <CircleAlert class="size-4 text-rose-500" />
+            <CircleAlert class="size-4 text-rose-600" />
             Hubo un problema al procesar la reunión. Presiona "Reintentar".
         </div>
 
@@ -228,7 +228,7 @@ function cambiarVersion(evento: Event) {
                 class="-mb-px border-b-2 px-3 py-2 text-sm transition-colors"
                 :class="
                     vista === opcion.valor
-                        ? 'border-cyan-500 font-medium text-foreground'
+                        ? 'border-hud-acento font-medium text-foreground'
                         : 'border-transparent text-muted-foreground hover:text-foreground'
                 "
                 @click="vista = opcion.valor"
@@ -269,7 +269,7 @@ function cambiarVersion(evento: Event) {
                     <div>
                         <p
                             v-if="segmento.hablante"
-                            class="text-xs font-medium text-cyan-600 dark:text-cyan-400"
+                            class="text-xs font-medium text-hud-acento-texto dark:text-hud-acento-texto"
                         >
                             Hablante {{ segmento.hablante }}
                         </p>

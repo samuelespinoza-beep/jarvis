@@ -7,7 +7,7 @@ const name = usePage().props.name;
 
 <template>
     <div
-        class="flex aspect-square size-8 items-center justify-center rounded-md bg-cyan-400 text-slate-950"
+        class="flex aspect-square size-8 items-center justify-center rounded-md bg-hud-acento text-hud-sobre-acento"
     >
         <Radar class="size-5" />
     </div>

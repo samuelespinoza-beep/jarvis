@@ -1,7 +1,8 @@
 <?php
 
-use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\SesionEscritorio;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,10 +16,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+        $middleware->encryptCookies(except: ['sidebar_state']);
+
+        // Antes de exigir sesión, para que en modo escritorio se entre sin login.
+        $middleware->prependToPriorityList(AuthenticatesRequests::class, SesionEscritorio::class);
 
         $middleware->web(append: [
-            HandleAppearance::class,
+            SesionEscritorio::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);

@@ -39,6 +39,12 @@ class JarvisController extends Controller
                 'maxKb' => DocumentoChat::maxKb(),
             ],
             'dictadoMaxSegundos' => config('jarvis.dictado.max_segundos'),
+            'voces' => [
+                'porDefecto' => config('jarvis.voz.voz'),
+                'lista' => collect(config('jarvis.voz.voces'))
+                    ->map(fn (string $descripcion, string $id) => ['id' => $id, 'descripcion' => $descripcion])
+                    ->values(),
+            ],
         ]);
     }
 }

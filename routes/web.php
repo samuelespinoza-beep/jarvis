@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ConversacionEnVivoController;
 use App\Http\Controllers\DictadoController;
 use App\Http\Controllers\FragmentoAudioController;
 use App\Http\Controllers\HistorialController;
@@ -21,6 +22,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('chat', [ChatController::class, 'enviar'])->middleware('throttle:20,1')->name('chat.enviar');
     Route::post('chat/voz', VozController::class)->middleware('throttle:30,1')->name('chat.voz');
     Route::post('chat/dictado', DictadoController::class)->middleware('throttle:20,1')->name('chat.dictado');
+    Route::post('chat/en-vivo/sesion', [ConversacionEnVivoController::class, 'sesion'])->middleware('throttle:10,1')->name('chat.en-vivo.sesion');
+    Route::post('chat/en-vivo/herramienta', [ConversacionEnVivoController::class, 'herramienta'])->middleware('throttle:60,1')->name('chat.en-vivo.herramienta');
+    Route::post('chat/en-vivo/guardar', [ConversacionEnVivoController::class, 'guardar'])->middleware('throttle:20,1')->name('chat.en-vivo.guardar');
 
     Route::get('reuniones', [HistorialController::class, 'index'])->name('reuniones.index');
     Route::get('reuniones/{reunion}', [HistorialController::class, 'show'])->name('reuniones.show');

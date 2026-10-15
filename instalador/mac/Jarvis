@@ -1,0 +1,86 @@
+#!/bin/bash
+# Lanzador de Asistente IA.app. La primera vez (o tras actualizar la app) copia el
+# programa a ~/Library/Application Support/Jarvis, pide la llave de OpenAI y
+# registra el servidor y la cola como servicios del usuario (launchd).
+# Después solo se asegura de que estén corriendo y abre el navegador.
+# Compatible con el bash 3.2 que trae macOS.
+set -euo pipefail
+
+RECURSOS="$(cd "$(dirname "$0")/../Resources" && pwd)"
+DESTINO="$HOME/Library/Application Support/Jarvis"
+AGENTES="$HOME/Library/LaunchAgents"
+SESION="gui/$(id -u)"
+VERSION="$(cat "$RECURSOS/VERSION")"
+
+avisar() {
+    osascript -e "display dialog \"$1\" with title \"Asistente IA\" buttons {\"OK\"} default button 1 with icon stop" >/dev/null 2>&1 || true
+}
+
+detener() {
+    for agente in servidor cola; do
+        launchctl bootout "$SESION/local.jarvis.$agente" 2>/dev/null || true
+    done
+}
+
+instalar() {
+    detener
+    mkdir -p "$DESTINO/logs" "$DESTINO/php" "$AGENTES"
+
+    # Programa nuevo, rescatando los datos de la versión anterior. Se copia sin
+    # la marca de "descargado de internet" para que macOS deje ejecutar el PHP.
+    rm -rf "$DESTINO/app.nueva"
+    ditto --noextattr --noqtn "$RECURSOS/app" "$DESTINO/app.nueva"
+    if [ -d "$DESTINO/app" ]; then
+        for dato in .env database/database.sqlite storage/app storage/logs; do
+            if [ -e "$DESTINO/app/$dato" ]; then
+                rm -rf "$DESTINO/app.nueva/$dato"
+                mv "$DESTINO/app/$dato" "$DESTINO/app.nueva/$dato"
+            fi
+        done
+        rm -rf "$DESTINO/app"
+    fi
+    mv "$DESTINO/app.nueva" "$DESTINO/app"
+
+    if [ "$(uname -m)" = "arm64" ]; then binario="php-arm64"; else binario="php-x86_64"; fi
+    ditto --noextattr --noqtn "$RECURSOS/php/$binario" "$DESTINO/php/php"
+    chmod 755 "$DESTINO/php/php"
+    cp "$RECURSOS/php/cacert.pem" "$DESTINO/php/cacert.pem"
+    sed "s|@DESTINO@|$DESTINO|g" "$RECURSOS/php.ini" > "$DESTINO/php/php.ini"
+    cp "$RECURSOS/Desinstalar Asistente IA.command" "$DESTINO/"
+    xattr -cr "$DESTINO" 2>/dev/null || true
+
+    # La llave de OpenAI se pide solo si todavía no hay una.
+    llave=""
+    if ! grep -qE '^OPENAI_API_KEY=.+' "$DESTINO/app/.env" 2>/dev/null; then
+        llave="$(osascript -e 'text returned of (display dialog "El Asistente IA usa OpenAI para transcribir, resumir y responder.\n\nPega tu llave de OpenAI (empieza con sk-):" default answer "" with hidden answer with title "Asistente IA" buttons {"Cancelar", "Continuar"} default button "Continuar" cancel button "Cancelar")' 2>/dev/null)" || exit 0
+    fi
+
+    if ! (cd "$DESTINO/app" && PHPRC="$DESTINO/php" "$DESTINO/php/php" artisan jarvis:instalar --llave="$llave" --no-interaction) >>"$DESTINO/logs/instalacion.log" 2>&1; then
+        avisar "No se pudo configurar el Asistente IA. Revisa el archivo logs/instalacion.log en la carpeta Application Support/Jarvis."
+        exit 1
+    fi
+
+    for agente in servidor cola; do
+        sed "s|@DESTINO@|$DESTINO|g" "$RECURSOS/local.jarvis.$agente.plist" > "$AGENTES/local.jarvis.$agente.plist"
+    done
+
+    echo "$VERSION" > "$DESTINO/VERSION"
+}
+
+if [ "$(cat "$DESTINO/VERSION" 2>/dev/null || true)" != "$VERSION" ]; then
+    instalar
+fi
+
+for agente in servidor cola; do
+    if ! launchctl print "$SESION/local.jarvis.$agente" >/dev/null 2>&1; then
+        launchctl bootstrap "$SESION" "$AGENTES/local.jarvis.$agente.plist"
+    fi
+done
+
+# Espera hasta 15 s a que el servidor responda.
+for _ in $(seq 1 30); do
+    curl -fs -o /dev/null http://127.0.0.1:8073/up && break
+    sleep 0.5
+done
+
+open "http://127.0.0.1:8073"

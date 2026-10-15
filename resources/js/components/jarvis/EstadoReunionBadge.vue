@@ -12,29 +12,29 @@ const etiqueta = computed(() => {
         case 'grabando':
             return {
                 texto: 'Grabando',
-                clase: 'border-rose-500/40 text-rose-500',
+                clase: 'border-rose-300 text-rose-600',
             };
         case 'pausada':
             return {
                 texto: 'En pausa',
-                clase: 'border-amber-500/40 text-amber-600 dark:text-amber-300',
+                clase: 'border-amber-300 text-amber-700 dark:text-amber-700',
             };
         case 'procesando':
             return {
                 texto: reunion.transcripcion_lista
                     ? 'Generando resumen'
                     : 'Transcribiendo',
-                clase: 'border-cyan-500/40 text-cyan-600 dark:text-cyan-300',
+                clase: 'border-hud-acento/40 text-hud-acento-texto dark:text-hud-acento-texto',
             };
         case 'completada':
             return {
                 texto: 'Completada',
-                clase: 'border-emerald-500/40 text-emerald-600 dark:text-emerald-300',
+                clase: 'border-emerald-300 text-emerald-600 dark:text-emerald-600',
             };
         default:
             return {
                 texto: 'Error',
-                clase: 'border-rose-500/40 text-rose-500',
+                clase: 'border-rose-300 text-rose-600',
             };
     }
 });

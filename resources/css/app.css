@@ -59,6 +59,16 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+
+    /* Colores propios de Jarvis (ver .tema-jarvis): bg-hud-fondo, text-hud-texto, etc. */
+    --color-hud-fondo: var(--hud-fondo);
+    --color-hud-superficie: var(--hud-superficie);
+    --color-hud-texto: var(--hud-texto);
+    --color-hud-suave: var(--hud-suave);
+    --color-hud-acento: var(--hud-acento);
+    --color-hud-acento-fuerte: var(--hud-acento-fuerte);
+    --color-hud-acento-texto: var(--hud-acento-texto);
+    --color-hud-sobre-acento: var(--hud-sobre-acento);
 }
 
 /*
@@ -163,23 +173,54 @@
 }
 
 /*
- * Tema HUD de Jarvis para las pantallas de acceso. Se aplica junto con la
- * clase "dark", así que debe ir después de .dark para sobrescribirla.
+ * Tema de Jarvis para toda la app: fondo blanco y acento naranja, al estilo del
+ * JARVIS de Iron Man. El marco, el menú lateral y las pantallas comparten estos
+ * colores. Para cambiar el tema basta con editar este bloque: los componentes
+ * usan las variables --hud-* (clases bg-hud-*, text-hud-*, border-hud-*).
  */
 .tema-jarvis {
-    --background: hsl(216 64% 4%);
-    --foreground: hsl(186 100% 94%);
-    --card: hsl(210 60% 6%);
-    --card-foreground: hsl(186 100% 94%);
-    --primary: hsl(188 86% 53%);
-    --primary-foreground: hsl(222 47% 6%);
-    --muted: hsl(195 50% 12%);
-    --muted-foreground: hsl(188 30% 62%);
-    --accent: hsl(195 60% 14%);
-    --accent-foreground: hsl(186 100% 94%);
-    --border: hsl(188 86% 53% / 0.25);
-    --input: hsl(188 86% 53% / 0.3);
-    --ring: hsl(188 86% 53%);
+    color-scheme: light;
+
+    /* Colores propios de Jarvis */
+    --hud-fondo: hsl(0 0% 100%);
+    --hud-superficie: hsl(33 100% 94%);
+    --hud-texto: hsl(24 25% 12%);
+    --hud-suave: hsl(24 10% 42%);
+    --hud-acento: hsl(25 95% 53%);
+    --hud-acento-fuerte: hsl(21 90% 48%);
+    /* Naranja más oscuro para textos pequeños: se lee bien sobre blanco. */
+    --hud-acento-texto: hsl(17 88% 40%);
+    --hud-sobre-acento: hsl(0 0% 100%);
+    /* Mismo naranja que --hud-acento, en RGB, para la rejilla y el núcleo animado. */
+    --hud-acento-rgb: 249, 115, 22;
+
+    /* Colores de los componentes base (botones, menús, campos) */
+    --background: hsl(30 33% 98%);
+    --foreground: var(--hud-texto);
+    --card: hsl(0 0% 100%);
+    --card-foreground: var(--hud-texto);
+    --popover: hsl(0 0% 100%);
+    --popover-foreground: var(--hud-texto);
+    --primary: var(--hud-acento);
+    --primary-foreground: var(--hud-sobre-acento);
+    --secondary: hsl(33 100% 96%);
+    --secondary-foreground: var(--hud-texto);
+    --muted: hsl(33 60% 95%);
+    --muted-foreground: var(--hud-suave);
+    --accent: hsl(33 100% 93%);
+    --accent-foreground: var(--hud-texto);
+    --border: hsl(27 90% 55% / 0.22);
+    --input: hsl(27 90% 55% / 0.3);
+    --ring: var(--hud-acento);
+    --sidebar: hsl(0 0% 100%);
+    --sidebar-background: hsl(0 0% 100%);
+    --sidebar-foreground: var(--hud-texto);
+    --sidebar-primary: var(--hud-acento);
+    --sidebar-primary-foreground: var(--hud-sobre-acento);
+    --sidebar-accent: hsl(33 100% 93%);
+    --sidebar-accent-foreground: var(--hud-texto);
+    --sidebar-border: hsl(27 90% 55% / 0.18);
+    --sidebar-ring: var(--hud-acento);
 }
 
 @layer base {
@@ -189,4 +230,36 @@
     body {
         @apply bg-background text-foreground;
     }
+}
+
+/*
+ * Barras de desplazamiento finas y en el naranja de Jarvis en toda la app
+ * (chat, caja de texto, listas). scrollbar-color lo usan Chrome, Edge y Firefox; las reglas
+ * ::-webkit-scrollbar son para Safari.
+ */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(25 95% 53% / 0.35) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: hsl(25 95% 53% / 0.35);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(25 95% 53% / 0.6);
+}
+
+::-webkit-scrollbar-button {
+    display: none;
 }

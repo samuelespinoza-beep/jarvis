@@ -4,6 +4,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Modo escritorio
+    |--------------------------------------------------------------------------
+    |
+    | En la versión instalada (una persona en su propia PC) no hay pantalla de
+    | inicio de sesión: se entra directo con un usuario local. En desarrollo
+    | queda desactivado y se usa el login normal.
+    |
+    */
+
+    'escritorio' => (bool) env('JARVIS_ESCRITORIO', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Grabación
     |--------------------------------------------------------------------------
     |
@@ -44,7 +57,7 @@ return [
     |
     | Mientras la reunión está abierta (grabando o en pausa), el navegador
     | envía el micrófono directamente a OpenAI Realtime (WebRTC) y recibe el
-    | texto frase a frase para detectar órdenes como "Jarvis, pausa la
+    | texto frase a frase para detectar órdenes como "Asistente, pausa la
     | reunión". El texto no se muestra ni se guarda: el acta se sigue haciendo
     | con la transcripción por fragmentos, así que este audio se paga aparte.
     |
@@ -78,7 +91,7 @@ return [
     | Chat
     |--------------------------------------------------------------------------
     |
-    | Modelo del chat con Jarvis, que puede buscar en internet, leer páginas,
+    | Modelo del chat con el Asistente IA, que puede buscar en internet, leer páginas,
     | ver videos de YouTube y consultar las reuniones guardadas. También se le
     | puede adjuntar un documento para resumirlo o hacerle preguntas: OpenAI
     | lee el archivo directamente, sin extraer el texto en el servidor.
@@ -93,6 +106,28 @@ return [
         'documento_max_kb' => (int) env('JARVIS_DOCUMENTO_MAX_KB', 10240),
 
         'documento_formatos' => ['pdf', 'docx', 'txt', 'md', 'csv'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Conversación por voz en vivo
+    |--------------------------------------------------------------------------
+    |
+    | Botón "En vivo" del chat: se conversa por voz con el asistente en tiempo
+    | real (OpenAI Realtime por WebRTC, directo desde el navegador). Responde
+    | hablando, se le puede interrumpir y usa las mismas herramientas que el
+    | chat, que ejecuta el servidor. Se cobra por minuto de audio.
+    |
+    */
+
+    'conversacion' => [
+        'modelo' => env('JARVIS_MODELO_CONVERSACION', 'gpt-realtime-2.1-mini'),
+        // Lo que dura la llave temporal para conectarse (la conversación sigue abierta después).
+        'segundos_llave' => 120,
+        // Sin hablar este tiempo, la conversación se cierra sola para no seguir cobrando.
+        'minutos_inactividad' => 3,
+        // Voces de la lista que no existen en tiempo real y su reemplazo más parecido.
+        'voces_equivalentes' => ['onyx' => 'cedar', 'nova' => 'marin', 'fable' => 'ash'],
     ],
 
     /*
@@ -117,16 +152,34 @@ return [
     | Voz
     |--------------------------------------------------------------------------
     |
-    | Jarvis puede leer en voz alta sus respuestas del chat (texto a voz de
+    | El Asistente IA puede leer en voz alta sus respuestas del chat (texto a voz de
     | OpenAI). Solo se genera audio cuando se pide, y se cobra por carácter.
     |
     */
 
     'voz' => [
         'modelo' => env('JARVIS_MODELO_VOZ', 'gpt-4o-mini-tts'),
+        // Voz por defecto; cada usuario puede elegir otra en el chat.
         'voz' => env('JARVIS_VOZ', 'onyx'),
-        'instrucciones' => 'Habla en español latinoamericano neutro, con voz grave, tranquila y sobria, '
-            .'como un mayordomo profesional. Ritmo pausado y pronunciación clara de cifras y fechas.',
+        'instrucciones' => 'Habla en español latinoamericano neutro, con tono profesional, tranquilo y claro. '
+            .'Ritmo pausado y pronunciación clara de cifras y fechas.',
+
+        // Voces de OpenAI (todas probadas con gpt-4o-mini-tts) y cómo suenan.
+        'voces' => [
+            'onyx' => 'Masculina, grave',
+            'ash' => 'Masculina, clara',
+            'echo' => 'Masculina, suave',
+            'ballad' => 'Masculina, expresiva',
+            'cedar' => 'Masculina, natural',
+            'verse' => 'Masculina, versátil',
+            'coral' => 'Femenina, cálida',
+            'nova' => 'Femenina, enérgica',
+            'shimmer' => 'Femenina, suave',
+            'sage' => 'Femenina, serena',
+            'marin' => 'Femenina, natural',
+            'alloy' => 'Neutra',
+            'fable' => 'Narrador, acento británico',
+        ],
         // OpenAI acepta hasta 4096 caracteres por pedido; lo que pase de aquí no se lee.
         'max_caracteres' => 4000,
     ],

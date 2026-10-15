@@ -9,14 +9,14 @@ defineProps<{
 
 <template>
     <div
-        class="dark tema-jarvis relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-background p-6 text-foreground md:p-10"
+        class="relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-background p-6 text-foreground md:p-10"
     >
         <!-- Rejilla y resplandor de fondo estilo HUD -->
         <div
-            class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.05)_1px,transparent_1px)] bg-[size:32px_32px]"
+            class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(var(--hud-acento-rgb),0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(var(--hud-acento-rgb),0.05)_1px,transparent_1px)] bg-[size:32px_32px]"
         />
         <div
-            class="pointer-events-none absolute top-1/2 left-1/2 size-[60rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(34,211,238,0.12),transparent_60%)]"
+            class="pointer-events-none absolute top-1/2 left-1/2 size-[60rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(var(--hud-acento-rgb),0.12),transparent_60%)]"
         />
 
         <div class="relative flex w-full max-w-sm flex-col gap-6">
@@ -28,7 +28,7 @@ defineProps<{
                     class="font-mono text-xs tracking-[0.6em] text-primary"
                     aria-hidden="true"
                 >
-                    J.A.R.V.I.S.
+                    Asistente IA
                 </p>
                 <div class="space-y-1">
                     <h1 class="text-xl font-medium">{{ title }}</h1>
@@ -39,7 +39,7 @@ defineProps<{
             </div>
 
             <div
-                class="relative rounded-xl border border-primary/25 bg-card/70 p-6 shadow-[0_0_60px_-20px_rgba(34,211,238,0.5)] backdrop-blur-sm"
+                class="relative rounded-xl border border-primary/25 bg-card/70 p-6 shadow-[0_0_60px_-20px_rgba(var(--hud-acento-rgb),0.5)] backdrop-blur-sm"
             >
                 <!-- Esquinas del marco -->
                 <span

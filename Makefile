@@ -1,5 +1,5 @@
-# Comandos de desarrollo de Jarvis (Linux). En la laptop Windows se usa Iniciar-Jarvis.bat.
-# El puerto se toma de SERVER_PORT en el .env (8073).
+# Comandos de desarrollo del Asistente IA (Linux). En la laptop Windows se usa Iniciar-Jarvis.bat.
+# El puerto se toma de SERVER_PORT en el .env (8074; el 8073 queda para la versión instalada).
 
 # Procesos que crea "make dev" (servidor, cola, logs y Vite). "make down" solo detiene
 # los que corren dentro de esta carpeta, así no toca otros proyectos Laravel.
@@ -8,7 +8,7 @@ PROCESOS = composer run dev|artisan (serve|dev|queue:listen|queue:work|pail)|res
 help: ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-dev: ## Levanta servidor (8073), cola de trabajos, logs y Vite. Ctrl+C para detener
+dev: ## Levanta servidor (8074), cola de trabajos, logs y Vite. Ctrl+C para detener
 	@composer run dev
 
 down: ## Detiene los procesos de este proyecto que quedaron corriendo (no toca otros proyectos)
@@ -46,4 +46,22 @@ lint: ## Revisa y corrige el formato de PHP (Pint) y el frontend (lint + formato
 build: ## Compila el frontend para producción (public/build)
 	@npm run build
 
-.PHONY: help dev down clear install migrate fresh test lint build
+instalador: ## Genera los instaladores de Windows, Linux y Mac en dist/ (necesita Docker)
+	@instalador/preparar-app.sh
+	@instalador/linux/empaquetar.sh
+	@instalador/windows/empaquetar.sh
+	@instalador/mac/empaquetar.sh
+
+instalador-linux: ## Genera solo el instalador de Linux (dist/Asistente-IA-*-linux.run)
+	@instalador/preparar-app.sh
+	@instalador/linux/empaquetar.sh
+
+instalador-windows: ## Genera solo el instalador de Windows (dist/Asistente-IA-*-windows.exe, necesita Docker)
+	@instalador/preparar-app.sh
+	@instalador/windows/empaquetar.sh
+
+instalador-mac: ## Genera solo la app de Mac (dist/Asistente-IA-*-mac.zip)
+	@instalador/preparar-app.sh
+	@instalador/mac/empaquetar.sh
+
+.PHONY: help dev down clear install migrate fresh test lint build instalador instalador-linux instalador-windows instalador-mac

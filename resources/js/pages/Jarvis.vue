@@ -28,6 +28,7 @@ import { jarvis } from '@/routes';
 import type {
     ConfigDocumentos,
     ConfigGrabacion,
+    ConfigVoces,
     EstadoFragmento,
     Reunion,
 } from '@/types';
@@ -38,11 +39,12 @@ const props = defineProps<{
     grabacion: ConfigGrabacion;
     documentos: ConfigDocumentos;
     dictadoMaxSegundos: number;
+    voces: ConfigVoces;
 }>();
 
 defineOptions({
     layout: {
-        breadcrumbs: [{ title: 'Jarvis', href: jarvis() }],
+        breadcrumbs: [{ title: 'Asistente IA', href: jarvis() }],
     },
 });
 
@@ -164,10 +166,10 @@ const textoFragmento: Record<EstadoFragmento, string> = {
 };
 
 const colorFragmento: Record<EstadoFragmento, string> = {
-    pendiente: 'text-slate-500',
-    transcribiendo: 'text-cyan-300 animate-pulse',
-    listo: 'text-emerald-400',
-    error: 'text-rose-400',
+    pendiente: 'text-hud-suave',
+    transcribiendo: 'text-hud-acento-texto animate-pulse',
+    listo: 'text-emerald-600',
+    error: 'text-rose-600',
 };
 
 async function iniciar() {
@@ -181,7 +183,7 @@ async function iniciar() {
 function confirmarTerminar() {
     if (
         window.confirm(
-            '¿Terminar la reunión? Ya no se podrá agregar más audio y Jarvis generará el acta.',
+            '¿Terminar la reunión? Ya no se podrá agregar más audio y el Asistente IA generará el acta.',
         )
     ) {
         void terminar();
@@ -195,14 +197,14 @@ function ejecutarOrden(orden: OrdenVoz) {
     switch (orden.tipo) {
         case 'pausar':
             if (estado.value === 'escuchando') {
-                toast('Jarvis: pausando la reunión.');
+                toast('Asistente IA: pausando la reunión.');
                 void pausar();
             }
 
             break;
         case 'reanudar':
             if (estado.value === 'pausado') {
-                toast('Jarvis: reanudando la reunión.');
+                toast('Asistente IA: reanudando la reunión.');
                 void reanudar();
             }
 
@@ -217,13 +219,35 @@ function ejecutarOrden(orden: OrdenVoz) {
             pestana.value = 'chat';
             void chat.value?.proponer(orden.texto);
             toast(
-                'Jarvis: tu pregunta está en el chat. Pulsa Enter para enviarla.',
+                'Asistente IA: tu pregunta está en el chat. Pulsa Enter para enviarla.',
             );
             break;
     }
 }
 
 const ordenesVoz = useOrdenesDeVoz(ejecutarOrden);
+
+// Conversación por voz en vivo desde el chat: mientras dura, la reunión se
+// pausa (para que no quede en el acta) y se reanuda al terminar.
+const conversandoEnVivo = ref(false);
+let reanudarAlTerminarEnVivo = false;
+
+async function alCambiarEnVivo(activo: boolean) {
+    conversandoEnVivo.value = activo;
+
+    if (activo && estado.value === 'escuchando') {
+        reanudarAlTerminarEnVivo = true;
+        toast('Reunión en pausa mientras conversas con el Asistente IA.');
+        await pausar();
+    } else if (!activo && reanudarAlTerminarEnVivo) {
+        reanudarAlTerminarEnVivo = false;
+
+        if (estado.value === 'pausado') {
+            toast('Reanudando la reunión.');
+            await reanudar();
+        }
+    }
+}
 
 // En pausa se sigue escuchando (para "Jarvis, reanuda") solo un tiempo: así
 // una reunión olvidada en pausa no deja el micrófono abierto y cobrando.
@@ -249,10 +273,12 @@ const reunionQueEscucha = computed(() => {
         'reanudando',
     ].includes(estado.value);
 
+    // Durante la conversación en vivo no se escuchan órdenes: ya hay una escucha.
     return props.grabacion.enVivo &&
         abierta &&
         reunion.value &&
-        !escuchaEnReposo.value
+        !escuchaEnReposo.value &&
+        !conversandoEnVivo.value
         ? reunion.value.id
         : null;
 });
@@ -271,15 +297,15 @@ watch(
 </script>
 
 <template>
-    <Head title="Jarvis" />
+    <Head title="Inicio" />
 
     <div class="flex h-full flex-1 flex-col p-4">
         <div
-            class="relative flex flex-1 flex-col overflow-hidden rounded-xl border border-cyan-500/20 bg-[#04080f] text-cyan-50 lg:flex-row"
+            class="relative flex flex-1 flex-col overflow-hidden rounded-xl border border-hud-acento/20 bg-hud-fondo text-hud-texto lg:flex-row"
         >
             <!-- Rejilla de fondo estilo HUD -->
             <div
-                class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(34,211,238,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.04)_1px,transparent_1px)] bg-[size:32px_32px]"
+                class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(var(--hud-acento-rgb),0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(var(--hud-acento-rgb),0.04)_1px,transparent_1px)] bg-[size:32px_32px]"
             />
 
             <section
@@ -291,7 +317,7 @@ watch(
                         v-if="!reunionAbierta"
                         size="lg"
                         :disabled="estado === 'iniciando'"
-                        class="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                        class="bg-hud-acento text-hud-sobre-acento hover:bg-hud-acento-fuerte"
                         @click="iniciar"
                     >
                         <Mic />
@@ -320,7 +346,7 @@ watch(
 
                 <div class="flex flex-col items-center gap-1 text-center">
                     <p
-                        class="font-mono text-xs tracking-[0.4em] text-cyan-400/80 uppercase"
+                        class="font-mono text-xs tracking-[0.4em] text-hud-acento-texto/80 uppercase"
                         aria-live="polite"
                     >
                         {{ textoEstado }}
@@ -329,27 +355,27 @@ watch(
                         class="font-mono text-4xl font-light tabular-nums"
                         :class="
                             escuchando
-                                ? 'text-cyan-100'
+                                ? 'text-hud-texto'
                                 : reunionAbierta
-                                  ? 'text-cyan-100/70'
-                                  : 'text-cyan-100/40'
+                                  ? 'text-hud-texto/70'
+                                  : 'text-hud-texto/40'
                         "
                     >
                         {{ formatearTiempo(reunionAbierta ? segundos : 0) }}
                     </p>
                     <p
                         v-if="reunionAbierta && reunion"
-                        class="max-w-md truncate text-sm text-cyan-200/60"
+                        class="max-w-md truncate text-sm text-hud-suave"
                     >
                         {{ reunion.titulo || 'Reunión sin título' }} · tiempo
                         grabado
                     </p>
                     <p
                         v-if="reunionQueEscucha"
-                        class="mt-1 flex items-center gap-2 text-xs text-cyan-200/50"
+                        class="mt-1 flex items-center gap-2 text-xs text-hud-suave"
                         :title="
                             ordenesVoz.aviso.value ??
-                            'Ejemplos: «Jarvis, pausa la reunión», «Jarvis, reanuda», «Jarvis, termina la reunión» o «Jarvis, busca en la web…»'
+                            'Ejemplos: «Asistente, pausa la reunión», «Asistente, reanuda», «Asistente, termina la reunión» o «Asistente, busca en la web…»'
                         "
                     >
                         <span
@@ -369,14 +395,14 @@ watch(
                         <template
                             v-else-if="ordenesVoz.estado.value === 'activo'"
                         >
-                            Di «Jarvis, …» para pausar, reanudar, terminar o
+                            Di «Asistente, …» para pausar, reanudar, terminar o
                             preguntar
                         </template>
                         <template v-else>Activando órdenes de voz…</template>
                     </p>
                     <p
                         v-else-if="escuchaEnReposo"
-                        class="mt-1 text-xs text-cyan-200/40"
+                        class="mt-1 text-xs text-hud-suave"
                     >
                         Órdenes de voz en reposo por la pausa larga. Usa
                         Reanudar.
@@ -386,7 +412,7 @@ watch(
                 <div class="flex w-full max-w-md flex-col items-center gap-3">
                     <div
                         v-if="pausaLarga && reunion"
-                        class="rounded-lg border border-amber-400/30 bg-amber-950/30 p-3 text-center text-sm text-amber-100"
+                        class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-center text-sm text-amber-700"
                     >
                         Esta reunión está en pausa desde las
                         {{
@@ -403,7 +429,7 @@ watch(
                         v-model="titulo"
                         placeholder="Título de la reunión (opcional)"
                         maxlength="255"
-                        class="border-cyan-500/30 bg-cyan-950/30 text-cyan-50 placeholder:text-cyan-200/40"
+                        class="border-hud-acento/30 bg-hud-superficie/30 text-hud-texto placeholder:text-hud-suave/70"
                     />
 
                     <div class="flex flex-wrap justify-center gap-3">
@@ -414,7 +440,7 @@ watch(
                             size="lg"
                             variant="outline"
                             :disabled="estado === 'pausando'"
-                            class="border-cyan-500/40 bg-transparent text-cyan-100 hover:bg-cyan-950"
+                            class="border-hud-acento/40 bg-transparent text-hud-texto hover:bg-hud-superficie"
                             @click="pausar"
                         >
                             <Pause />
@@ -426,7 +452,7 @@ watch(
                             "
                             size="lg"
                             :disabled="estado === 'reanudando'"
-                            class="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                            class="bg-hud-acento text-hud-sobre-acento hover:bg-hud-acento-fuerte"
                             @click="reanudar"
                         >
                             <Play />
@@ -436,7 +462,7 @@ watch(
                             v-if="estado === 'subida-pendiente'"
                             size="lg"
                             variant="outline"
-                            class="border-cyan-500/40 bg-transparent text-cyan-100 hover:bg-cyan-950"
+                            class="border-hud-acento/40 bg-transparent text-hud-texto hover:bg-hud-superficie"
                             @click="reintentar"
                         >
                             <RotateCw />
@@ -446,7 +472,7 @@ watch(
 
                     <p
                         v-if="error"
-                        class="flex items-center gap-2 text-sm text-rose-300"
+                        class="flex items-center gap-2 text-sm text-rose-600"
                         role="alert"
                     >
                         <CircleAlert class="size-4 shrink-0" />
@@ -456,10 +482,10 @@ watch(
             </section>
 
             <aside
-                class="relative flex w-full flex-col gap-4 border-t border-cyan-500/20 bg-cyan-950/10 p-5 lg:w-[28rem] lg:border-t-0 lg:border-l"
+                class="relative flex w-full flex-col gap-4 border-t border-hud-acento/20 bg-hud-superficie/10 p-5 lg:w-[28rem] lg:border-t-0 lg:border-l"
             >
                 <div
-                    class="flex gap-1 border-b border-cyan-500/20"
+                    class="flex gap-1 border-b border-hud-acento/20"
                     role="tablist"
                 >
                     <button
@@ -474,8 +500,8 @@ watch(
                         class="-mb-px border-b-2 px-3 py-2 font-mono text-xs tracking-[0.3em] uppercase transition-colors"
                         :class="
                             pestana === opcion.valor
-                                ? 'border-cyan-400 text-cyan-300'
-                                : 'border-transparent text-cyan-200/40 hover:text-cyan-200/80'
+                                ? 'border-hud-acento text-hud-acento-texto'
+                                : 'border-transparent text-hud-suave hover:text-hud-suave/80'
                         "
                         @click="pestana = opcion.valor"
                     >
@@ -496,12 +522,14 @@ watch(
                     :escuchando="escuchando"
                     :documentos="documentos"
                     :dictado-max-segundos="dictadoMaxSegundos"
+                    :voces="voces"
                     @salir-de-reunion="reunionDelChat = null"
+                    @en-vivo="alCambiarEnVivo"
                 />
 
                 <div v-show="pestana === 'reunion'" class="flex flex-col gap-4">
                     <h2
-                        class="font-mono text-xs tracking-[0.3em] text-cyan-400/80 uppercase"
+                        class="font-mono text-xs tracking-[0.3em] text-hud-acento-texto/80 uppercase"
                     >
                         {{
                             reunionAbierta
@@ -516,15 +544,15 @@ watch(
 
                     <template v-if="reunion && reunionAbierta">
                         <dl class="grid grid-cols-2 gap-y-2 text-sm">
-                            <dt class="text-cyan-200/50">Título</dt>
+                            <dt class="text-hud-suave">Título</dt>
                             <dd class="truncate text-right">
                                 {{ reunion.titulo || 'Sin título' }}
                             </dd>
-                            <dt class="text-cyan-200/50">Inicio</dt>
+                            <dt class="text-hud-suave">Inicio</dt>
                             <dd class="text-right">
                                 {{ formatearHora(reunion.iniciada_en) }}
                             </dd>
-                            <dt class="text-cyan-200/50">Grabado</dt>
+                            <dt class="text-hud-suave">Grabado</dt>
                             <dd class="text-right tabular-nums">
                                 {{ formatearTiempo(segundos) }}
                             </dd>
@@ -532,26 +560,26 @@ watch(
 
                         <p
                             v-if="estado === 'pausado'"
-                            class="text-sm text-cyan-200/60"
+                            class="text-sm text-hud-suave"
                         >
                             La reunión sigue abierta. Presiona
-                            <strong class="text-cyan-100">Reanudar</strong>
+                            <strong class="text-hud-texto">Reanudar</strong>
                             para seguir grabando en ella o
-                            <strong class="text-cyan-100"
+                            <strong class="text-hud-texto"
                                 >Terminar reunión</strong
                             >
                             para generar el acta.
                         </p>
 
-                        <p class="text-sm text-cyan-200/60">
+                        <p class="text-sm text-hud-suave">
                             El resumen de cada minuto aparece en el
                             <button
                                 type="button"
-                                class="font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-100"
+                                class="font-medium text-hud-acento-texto underline underline-offset-2 hover:text-hud-texto"
                                 @click="pestana = 'chat'"
                             >
                                 Chat</button
-                            >, junto con tus preguntas a Jarvis.
+                            >, junto con tus preguntas al Asistente IA.
                         </p>
 
                         <p
@@ -561,8 +589,8 @@ watch(
                                 subidasPendientes.some(
                                     (s) => s.estado === 'error',
                                 )
-                                    ? 'text-rose-300'
-                                    : 'text-cyan-200/50'
+                                    ? 'text-rose-600'
+                                    : 'text-hud-suave'
                             "
                         >
                             {{
@@ -577,15 +605,15 @@ watch(
 
                     <template v-else-if="reunionMostrada">
                         <dl class="grid grid-cols-2 gap-y-2 text-sm">
-                            <dt class="text-cyan-200/50">Título</dt>
+                            <dt class="text-hud-suave">Título</dt>
                             <dd class="truncate text-right">
                                 {{ reunionMostrada.titulo || 'Sin título' }}
                             </dd>
-                            <dt class="text-cyan-200/50">Inicio</dt>
+                            <dt class="text-hud-suave">Inicio</dt>
                             <dd class="text-right">
                                 {{ formatearHora(reunionMostrada.iniciada_en) }}
                             </dd>
-                            <dt class="text-cyan-200/50">Duración</dt>
+                            <dt class="text-hud-suave">Duración</dt>
                             <dd class="text-right tabular-nums">
                                 {{
                                     formatearTiempo(
@@ -597,7 +625,7 @@ watch(
 
                         <div
                             v-if="reunionMostrada.estado === 'procesando'"
-                            class="flex flex-col gap-3 rounded-lg border border-cyan-400/30 bg-cyan-950/30 p-4 text-sm"
+                            class="flex flex-col gap-3 rounded-lg border border-hud-acento/30 bg-hud-superficie/30 p-4 text-sm"
                             aria-live="polite"
                         >
                             <p class="flex items-center gap-2 font-medium">
@@ -614,10 +642,10 @@ watch(
                             </p>
                             <div
                                 v-if="!reunionMostrada.transcripcion_lista"
-                                class="h-1 overflow-hidden rounded bg-cyan-950"
+                                class="h-1 overflow-hidden rounded bg-hud-superficie"
                             >
                                 <div
-                                    class="h-full bg-cyan-400 transition-all"
+                                    class="h-full bg-hud-acento transition-all"
                                     :style="{
                                         width: `${fragmentos.length ? (transcritos / fragmentos.length) * 100 : 0}%`,
                                     }"
@@ -627,10 +655,10 @@ watch(
 
                         <div
                             v-else-if="reunionMostrada.estado === 'error'"
-                            class="flex flex-col gap-3 rounded-lg border border-rose-400/30 bg-rose-950/20 p-4 text-sm"
+                            class="flex flex-col gap-3 rounded-lg border border-rose-300 bg-rose-50 p-4 text-sm"
                         >
                             <p
-                                class="flex items-center gap-2 font-medium text-rose-200"
+                                class="flex items-center gap-2 font-medium text-rose-600"
                             >
                                 <CircleAlert class="size-4" />
                                 {{
@@ -642,7 +670,7 @@ watch(
                             <Button
                                 size="sm"
                                 :disabled="reprocesando"
-                                class="self-start bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                                class="self-start bg-hud-acento text-hud-sobre-acento hover:bg-hud-acento-fuerte"
                                 @click="reprocesar"
                             >
                                 <RotateCw />
@@ -652,7 +680,7 @@ watch(
 
                         <p
                             v-else-if="reunionMostrada.estado === 'completada'"
-                            class="flex items-center gap-2 text-sm font-medium text-emerald-300"
+                            class="flex items-center gap-2 text-sm font-medium text-emerald-600"
                         >
                             <CircleCheck class="size-4" />
                             Acta lista
@@ -668,7 +696,7 @@ watch(
                             <li
                                 v-for="fragmento in fragmentos"
                                 :key="fragmento.orden"
-                                class="flex items-center justify-between gap-2 rounded border border-cyan-500/10 bg-cyan-950/20 px-3 py-1.5"
+                                class="flex items-center justify-between gap-2 rounded border border-hud-acento/10 bg-hud-superficie/20 px-3 py-1.5"
                                 :title="fragmento.error ?? undefined"
                             >
                                 <span class="font-mono">
@@ -692,7 +720,7 @@ watch(
                             "
                             class="flex flex-col gap-3 text-sm"
                         >
-                            <p class="leading-relaxed text-cyan-50/90">
+                            <p class="leading-relaxed text-hud-texto/90">
                                 {{ resumen.resumen_ejecutivo }}
                             </p>
                             <ul
@@ -702,12 +730,12 @@ watch(
                                 <li
                                     v-for="tema in resumen.temas_tratados"
                                     :key="tema"
-                                    class="rounded-full border border-cyan-500/30 px-2.5 py-0.5 text-xs text-cyan-100/80"
+                                    class="rounded-full border border-hud-acento/30 px-2.5 py-0.5 text-xs text-hud-texto/80"
                                 >
                                     {{ tema }}
                                 </li>
                             </ul>
-                            <p class="text-xs text-cyan-200/50">
+                            <p class="text-xs text-hud-suave">
                                 {{ resumen.acuerdos.length }} acuerdo(s) ·
                                 {{ resumen.pendientes.length }} pendiente(s)
                             </p>
@@ -717,7 +745,7 @@ watch(
                             v-if="reunionMostrada.estado !== 'procesando'"
                             size="sm"
                             variant="outline"
-                            class="self-start border-cyan-500/40 bg-transparent text-cyan-100 hover:bg-cyan-950"
+                            class="self-start border-hud-acento/40 bg-transparent text-hud-texto hover:bg-hud-superficie"
                             as-child
                         >
                             <Link :href="verReunion(reunionMostrada.id)">
@@ -727,11 +755,11 @@ watch(
                         </Button>
                     </template>
 
-                    <p v-else class="text-sm text-cyan-200/50">
+                    <p v-else class="text-sm text-hud-suave">
                         Presiona
-                        <strong class="text-cyan-100">Empezar reunión</strong>
+                        <strong class="text-hud-texto">Empezar reunión</strong>
                         al iniciar y
-                        <strong class="text-cyan-100">Terminar reunión</strong>
+                        <strong class="text-hud-texto">Terminar reunión</strong>
                         al finalizar.
                     </p>
                 </div>

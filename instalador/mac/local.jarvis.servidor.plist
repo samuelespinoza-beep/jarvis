@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Asistente IA: servidor web en 127.0.0.1:8073. Arranca al iniciar sesión y se reinicia si se cae. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.jarvis.servidor</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>@DESTINO@/php/php</string>
+        <string>-S</string>
+        <string>127.0.0.1:8073</string>
+        <string>@DESTINO@/app/vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>@DESTINO@/app/public</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PHPRC</key>
+        <string>@DESTINO@/php</string>
+        <key>PHP_CLI_SERVER_WORKERS</key>
+        <string>4</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardErrorPath</key>
+    <string>@DESTINO@/logs/servidor.log</string>
+</dict>
+</plist>

@@ -19,7 +19,7 @@ import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
     {
-        title: 'Jarvis',
+        title: 'Asistente IA',
         href: jarvis(),
         icon: Radar,
     },

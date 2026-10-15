@@ -4,14 +4,16 @@ export type OrdenVoz =
     | { tipo: 'terminar' }
     | { tipo: 'pregunta'; texto: string };
 
-// "Jarvis" al inicio de la frase, con las formas en que suele transcribirse mal.
+// "Asistente" (o "Asistente IA") al inicio de la frase. Como "asistente" es una
+// palabra común, solo cuenta si abre la frase; las órdenes además deben ser la
+// frase completa y las preguntas esperan el Enter del usuario.
 const ACTIVACION =
-    /^\s*(?:(?:oye|hey|ok|okay|hola)[\s,]+)?(?:jarvis|yarvis|jarvi|jarbis|yarbis|harvis|jervis|charvis)\b[\s,.:;!?-]*/i;
+    /^\s*(?:(?:oye|hey|ok|okay|hola)[\s,]+)?(?:asistente|asistenta)\b(?:\s+(?:de\s+)?(?:ia|i\.\s?a|inteligencia artificial)\b\.?)?[\s,.:;!?-]*/i;
 
 const OBJETO = '(?: (?:la|esta) (?:reunion|grabacion))?';
 const CORTESIA = '(?: por favor)?';
 
-// Las órdenes deben ser la frase completa ("Jarvis, pausa la reunión"), para
+// Las órdenes deben ser la frase completa ("Asistente, pausa la reunión"), para
 // que una pregunta que empiece con esas palabras no la active por error.
 const ORDENES: { tipo: 'pausar' | 'reanudar' | 'terminar'; patron: RegExp }[] =
     [
@@ -47,8 +49,8 @@ function normalizar(texto: string): string {
 }
 
 /**
- * Interpreta una frase dicha en la reunión. Devuelve null si no va dirigida a
- * Jarvis; si va dirigida a él y no es una orden conocida, es una pregunta
+ * Interpreta una frase dicha en la reunión. Devuelve null si no va dirigida al
+ * asistente; si va dirigida a él y no es una orden conocida, es una pregunta
  * para el chat.
  */
 export function interpretarOrdenVoz(frase: string): OrdenVoz | null {

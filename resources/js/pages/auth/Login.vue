@@ -14,7 +14,7 @@ import { request } from '@/routes/password';
 defineOptions({
     layout: {
         title: 'Identificación requerida',
-        description: 'Ingresa tus credenciales para acceder a Jarvis',
+        description: 'Ingresa tus credenciales para acceder al Asistente IA',
     },
 });
 
@@ -29,7 +29,7 @@ defineProps<{
 
     <div
         v-if="status"
-        class="mb-4 text-center text-sm font-medium text-emerald-400"
+        class="mb-4 text-center text-sm font-medium text-emerald-600"
     >
         {{ status }}
     </div>
@@ -88,7 +88,7 @@ defineProps<{
 
             <Button
                 type="submit"
-                class="mt-2 w-full font-mono tracking-[0.2em] uppercase shadow-[0_0_24px_-6px_rgba(34,211,238,0.7)]"
+                class="mt-2 w-full font-mono tracking-[0.2em] uppercase shadow-[0_0_24px_-6px_rgba(var(--hud-acento-rgb),0.7)]"
                 :tabindex="4"
                 :disabled="processing"
                 data-test="login-button"

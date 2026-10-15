@@ -22,7 +22,7 @@ class ConsultarReuniones implements Tool
      */
     public function description(): Stringable|string
     {
-        return 'Busca reuniones del directorio grabadas con Jarvis. Filtra por rango de fechas y/o por '
+        return 'Busca reuniones del directorio grabadas con el Asistente IA. Filtra por rango de fechas y/o por '
             .'palabras que aparezcan en el título o el resumen. Devuelve el ID, título, fecha y resumen '
             .'ejecutivo de cada una. Para ver el acta completa o la transcripción usa LeerReunion.';
     }

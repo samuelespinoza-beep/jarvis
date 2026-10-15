@@ -36,7 +36,7 @@ defineOptions({
         <header>
             <h1 class="text-xl font-semibold">Reuniones</h1>
             <p class="text-sm text-muted-foreground">
-                Historial de reuniones grabadas con Jarvis.
+                Historial de reuniones grabadas con el Asistente IA.
             </p>
         </header>
 
@@ -44,7 +44,7 @@ defineOptions({
             v-if="!reuniones.data.length"
             class="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground"
         >
-            Todavía no hay reuniones. Graba la primera desde Jarvis.
+            Todavía no hay reuniones. Graba la primera desde el Asistente IA.
         </p>
 
         <ul v-else class="flex flex-col gap-3">

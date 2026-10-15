@@ -1,0 +1,14 @@
+[Unit]
+Description=Asistente IA (servidor web en 127.0.0.1:8073)
+
+[Service]
+WorkingDirectory=@DESTINO@/app/public
+Environment=PHPRC=@DESTINO@/php
+# Varias peticiones a la vez: el chat responde mientras se sube el audio.
+Environment=PHP_CLI_SERVER_WORKERS=4
+ExecStart=@DESTINO@/php/php -S 127.0.0.1:8073 @DESTINO@/app/vendor/laravel/framework/src/Illuminate/Foundation/resources/server.php
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

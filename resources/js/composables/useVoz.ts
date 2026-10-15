@@ -3,25 +3,42 @@ import VozController from '@/actions/App/Http/Controllers/VozController';
 import { tokenXsrf } from '@/lib/xsrf';
 
 const PREFERENCIA = 'jarvis.voz-automatica';
+const PREFERENCIA_VOZ = 'jarvis.voz';
+const MUESTRA = 'Hola, soy tu Asistente IA. Así sonarán mis respuestas.';
 
-function leerPreferencia(): boolean {
+function leer(clave: string): string | null {
     try {
-        return localStorage.getItem(PREFERENCIA) === '1';
+        return localStorage.getItem(clave);
     } catch {
-        return false;
+        return null;
+    }
+}
+
+function guardar(clave: string, valor: string) {
+    try {
+        localStorage.setItem(clave, valor);
+    } catch {
+        // Sin almacenamiento la preferencia solo dura mientras la página esté abierta.
     }
 }
 
 /**
- * Jarvis lee en voz alta sus respuestas. El audio de cada texto se guarda
- * mientras la página está abierta, así repetirlo no vuelve a cobrarse.
+ * El asistente lee en voz alta sus respuestas con la voz de OpenAI que elija
+ * el usuario. El audio de cada texto se guarda mientras la página está
+ * abierta, así repetirlo no vuelve a cobrarse.
  */
-export function useVoz() {
+export function useVoz(vozPorDefecto: string, vocesDisponibles: string[]) {
     // Respuesta que se está preparando o sonando (su clave en el chat).
     const activa = ref<string | null>(null);
     const cargando = ref(false);
     const error = ref<string | null>(null);
-    const automatica = ref(leerPreferencia());
+    const automatica = ref(leer(PREFERENCIA) === '1');
+    const guardada = leer(PREFERENCIA_VOZ);
+    const voz = ref(
+        guardada && vocesDisponibles.includes(guardada)
+            ? guardada
+            : vozPorDefecto,
+    );
 
     const audios = new Map<string, string>();
     let reproductor: HTMLAudioElement | null = null;
@@ -48,7 +65,7 @@ export function useVoz() {
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-XSRF-TOKEN': tokenXsrf(),
             },
-            body: JSON.stringify({ texto }),
+            body: JSON.stringify({ texto, voz: voz.value }),
         });
 
         if (!respuesta.ok) {
@@ -70,11 +87,13 @@ export function useVoz() {
         error.value = null;
 
         try {
-            let url = audios.get(texto);
+            // El mismo texto con otra voz es otro audio.
+            const claveAudio = `${voz.value}|${texto}`;
+            let url = audios.get(claveAudio);
 
             if (!url) {
                 url = await generar(texto);
-                audios.set(texto, url);
+                audios.set(claveAudio, url);
             }
 
             // Mientras se generaba, el usuario pidió otra cosa o lo detuvo.
@@ -116,11 +135,16 @@ export function useVoz() {
             detener();
         }
 
-        try {
-            localStorage.setItem(PREFERENCIA, automatica.value ? '1' : '0');
-        } catch {
-            // Sin almacenamiento la preferencia solo dura mientras la página esté abierta.
-        }
+        guardar(PREFERENCIA, automatica.value ? '1' : '0');
+    }
+
+    /**
+     * Cambia la voz y la hace escuchar con una frase de muestra.
+     */
+    function elegirVoz(nueva: string) {
+        voz.value = nueva;
+        guardar(PREFERENCIA_VOZ, nueva);
+        void reproducir('muestra', MUESTRA);
     }
 
     onBeforeUnmount(() => {
@@ -133,6 +157,8 @@ export function useVoz() {
         cargando,
         error,
         automatica,
+        voz,
+        elegirVoz,
         reproducir,
         alternar,
         detener,

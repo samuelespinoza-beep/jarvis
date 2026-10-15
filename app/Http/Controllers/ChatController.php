@@ -50,6 +50,7 @@ class ChatController extends Controller
             ->whereIn('role', ['user', 'assistant'])
             ->where('content', '!=', '')
             ->oldest()
+            ->orderBy('id')
             ->get(['role', 'content', 'attachments', 'created_at'])
             ->map(fn (ConversationMessage $mensaje) => [
                 'rol' => $mensaje->role === 'user' ? 'usuario' : 'jarvis',

@@ -5,7 +5,7 @@ import type { OrdenVoz } from '@/lib/ordenesVoz';
 
 /**
  * Escucha la reunión abierta (también en pausa) y avisa cuando alguien le da
- * una orden a Jarvis ("Jarvis, pausa la reunión"). Usa su propio micrófono,
+ * una orden al asistente ("Asistente, pausa la reunión"). Usa su propio micrófono,
  * así sigue oyendo aunque la grabación esté en pausa.
  */
 export function useOrdenesDeVoz(alOrdenar: (orden: OrdenVoz) => void) {

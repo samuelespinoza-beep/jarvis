@@ -35,6 +35,19 @@ class VozTest extends TestCase
             && str_contains((string) $prompt->instructions, 'español'));
     }
 
+    public function test_the_user_can_choose_another_openai_voice()
+    {
+        Audio::fake();
+        $usuario = User::factory()->create();
+
+        $this->actingAs($usuario)->post(route('chat.voz'), ['texto' => 'Hola', 'voz' => 'coral'])->assertOk();
+        Audio::assertGenerated(fn (AudioPrompt $prompt) => $prompt->voice === 'coral');
+
+        // Solo voces de la lista: no se reenvía a OpenAI cualquier valor.
+        $this->actingAs($usuario)->post(route('chat.voz'), ['texto' => 'Hola', 'voz' => 'inventada'])
+            ->assertUnprocessable();
+    }
+
     public function test_a_text_without_anything_to_read_is_rejected()
     {
         Audio::fake();

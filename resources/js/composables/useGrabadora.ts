@@ -579,7 +579,7 @@ export function useGrabadora(config: ConfigGrabacion, abierta: Reunion | null) {
             if (
                 hayTrabajoPendiente.value &&
                 !window.confirm(
-                    'Jarvis está grabando o subiendo audio. Si sales de esta página se perderá el último tramo. ¿Salir de todas formas?',
+                    'El Asistente IA está grabando o subiendo audio. Si sales de esta página se perderá el último tramo. ¿Salir de todas formas?',
                 )
             ) {
                 evento.preventDefault();
