@@ -24,7 +24,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // El chat se llama con fetch y pide text/event-stream: sus errores (por
+        // ejemplo, un documento no válido) se devuelven en JSON, no con redirección.
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
+            fn (Request $request) => $request->is('api/*', 'chat', 'chat/*') || $request->expectsJson(),
         );
     })->create();

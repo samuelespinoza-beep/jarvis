@@ -34,6 +34,8 @@ class ResumidorTramo implements Agent, HasStructuredOutput
           (decisiones, cifras, propuestas, dudas).
         - "puntos": como máximo 3 datos clave muy breves; lista vacía si no hay.
         - Básate solo en el texto del tramo. No inventes nombres, cifras ni conclusiones.
+        - Ignora las frases dirigidas a Jarvis, el asistente que graba (por ejemplo "Jarvis, pausa la reunión"
+          o "Jarvis, busca en la web..."): son órdenes al sistema, no parte de la conversación.
         - Si el tramo solo tiene saludos, ruido o frases sueltas sin contenido, usa el tema
           "Sin contenido relevante" y descríbelo en una oración.
         TXT;

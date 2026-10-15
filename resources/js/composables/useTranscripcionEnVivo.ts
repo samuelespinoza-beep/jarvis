@@ -22,13 +22,18 @@ const URL_LLAMADAS = 'https://api.openai.com/v1/realtime/calls';
 const MAX_LINEAS = 200;
 const MAX_RECONEXIONES = 3;
 
+type Opciones = {
+    // Se llama con cada frase ya transcrita por completo.
+    alCompletarFrase?: (texto: string) => void;
+};
+
 /**
  * Transcripción en vivo con OpenAI Realtime: el navegador envía el micrófono
  * por WebRTC directamente a OpenAI (con una llave temporal que entrega el
- * servidor) y recibe el texto mientras se habla. Es solo para mostrar en
- * pantalla; si falla, la grabación de la reunión sigue igual.
+ * servidor) y recibe el texto mientras se habla. Se usa para detectar las
+ * órdenes de voz; si falla, la grabación de la reunión sigue igual.
  */
-export function useTranscripcionEnVivo() {
+export function useTranscripcionEnVivo(opciones: Opciones = {}) {
     const lineas = ref<LineaEnVivo[]>([]);
     const estado = ref<EstadoEnVivo>('apagado');
     const mensaje = ref<string | null>(null);
@@ -74,6 +79,10 @@ export function useTranscripcionEnVivo() {
                     const actual = linea(evento.item_id);
                     actual.texto = (evento.transcript ?? actual.texto).trim();
                     actual.final = true;
+
+                    if (actual.texto) {
+                        opciones.alCompletarFrase?.(actual.texto);
+                    }
                 }
 
                 // Las frases sin texto (ruido, silencio) no se muestran.
@@ -83,8 +92,7 @@ export function useTranscripcionEnVivo() {
                 break;
             case 'error':
                 mensaje.value =
-                    evento.error?.message ??
-                    'Error en la transcripción en vivo.';
+                    evento.error?.message ?? 'Error en las órdenes de voz.';
                 break;
         }
     }
@@ -184,7 +192,7 @@ export function useTranscripcionEnVivo() {
             cerrarConexion();
             estado.value = 'error';
             mensaje.value =
-                'No se pudo conectar la transcripción en vivo. La reunión se sigue grabando normalmente.';
+                'No se pudieron activar las órdenes de voz. La reunión se sigue grabando normalmente.';
         }
     }
 
@@ -194,7 +202,7 @@ export function useTranscripcionEnVivo() {
         if (reconexiones >= MAX_RECONEXIONES) {
             estado.value = 'error';
             mensaje.value =
-                'Se perdió la transcripción en vivo. La reunión se sigue grabando normalmente.';
+                'Se perdió la conexión de las órdenes de voz. La reunión se sigue grabando normalmente.';
 
             return;
         }
@@ -204,7 +212,7 @@ export function useTranscripcionEnVivo() {
     }
 
     /**
-     * Empieza a transcribir en vivo el micrófono de la reunión que se graba.
+     * Empieza a transcribir en vivo el micrófono durante la reunión abierta.
      */
     async function conectar(reunionId: string, stream: MediaStream) {
         desconectar();

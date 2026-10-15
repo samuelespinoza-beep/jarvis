@@ -370,7 +370,7 @@ export function useGrabadora(config: ConfigGrabacion, abierta: Reunion | null) {
     }
 
     /**
-     * Botón "Escuchar": crea una reunión nueva y empieza a grabar.
+     * Botón "Empezar reunión": crea una reunión nueva y empieza a grabar.
      */
     async function escuchar(titulo?: string) {
         if (estado.value !== 'inactivo') {

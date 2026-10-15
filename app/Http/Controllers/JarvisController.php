@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\EstadoReunion;
 use App\Http\Resources\ReunionResource;
 use App\Models\Reunion;
+use App\Support\DocumentoChat;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -33,6 +34,11 @@ class JarvisController extends Controller
                 'audioBitsPorSegundo' => config('jarvis.audio_bits_por_segundo'),
                 'enVivo' => config('jarvis.en_vivo.habilitada'),
             ],
+            'documentos' => [
+                'formatos' => DocumentoChat::formatos(),
+                'maxKb' => DocumentoChat::maxKb(),
+            ],
+            'dictadoMaxSegundos' => config('jarvis.dictado.max_segundos'),
         ]);
     }
 }

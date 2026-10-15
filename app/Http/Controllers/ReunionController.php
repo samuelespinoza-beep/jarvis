@@ -23,7 +23,7 @@ class ReunionController extends Controller
     ) {}
 
     /**
-     * Inicia una reunión nueva (botón "Escuchar").
+     * Inicia una reunión nueva (botón "Empezar reunión").
      */
     public function store(Request $request): JsonResponse
     {
@@ -75,6 +75,8 @@ class ReunionController extends Controller
                     'inicio_segundos' => $inicio,
                     'duracion_segundos' => $fragmento->duracion_segundos,
                     'resumen' => $fragmento->resumen,
+                    // Hora en que terminó el minuto, para ubicarlo entre los mensajes del chat.
+                    'creado_en' => $fragmento->created_at?->toIso8601String(),
                 ];
 
                 $inicio += $fragmento->duracion_segundos;

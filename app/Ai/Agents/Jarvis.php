@@ -20,8 +20,8 @@ use Stringable;
 
 /**
  * Asistente de chat del directorio: responde preguntas, sale a internet y
- * consulta las reuniones grabadas. Si se le pasa la reunión en curso, sabe de
- * qué reunión le están hablando.
+ * consulta las reuniones grabadas. Si se le pasa la reunión del chat (en curso
+ * o ya terminada), sabe de qué reunión le están hablando.
  */
 #[MaxSteps(8)]
 #[Timeout(120)]
@@ -56,6 +56,15 @@ class Jarvis implements Agent, Conversational, HasTools
         - Videos de un canal de YouTube: usa UltimosVideosYoutube.
         - Reuniones del directorio ("¿qué acordamos el lunes?"): usa ConsultarReuniones para encontrarlas y
           LeerReunion para ver el acta. Indica de qué reunión (título y fecha) sale cada dato.
+
+        Documentos adjuntos:
+        - Cuando te adjunten un documento y pidan resumirlo (o no pidan nada concreto), responde con:
+          "### Resumen": un párrafo de 3 a 5 líneas con de qué trata y su conclusión principal.
+          "### Temas centrales": de 3 a 7 viñetas, cada una con el tema en **negrita** y una línea de explicación.
+          "### Datos clave": cifras, fechas, nombres, plazos o acuerdos que aparezcan. Omite esta sección si no hay.
+        - Si preguntan algo concreto del documento, responde solo con lo que dice el documento e indica la
+          sección o página cuando se pueda. Si el documento no lo dice, dilo; no lo completes con suposiciones.
+        - No uses las herramientas para un documento adjunto, salvo que pidan expresamente buscar algo afuera.
         {$this->contextoReunion()}
         TXT;
     }
@@ -67,6 +76,23 @@ class Jarvis implements Agent, Conversational, HasTools
         }
 
         $reunion = $this->reunion;
+
+        if (! $reunion->estado->estaAbierta()) {
+            $acta = $reunion->estado === EstadoReunion::Completada
+                ? 'Ya tiene acta: léela con LeerReunion y ese ID.'
+                : 'Su acta todavía se está generando o falló; puedes leer la transcripción con LeerReunion.';
+
+            return <<<TXT
+
+            Reunión de este chat (ya terminada):
+            - ID: {$reunion->id}
+            - Título: {$this->tituloReunion()}
+            - Fecha: {$reunion->iniciada_en->translatedFormat('l j \d\e F, H:i')}
+            {$acta}
+            Cuando pregunten por "la reunión" o "el acta", se refieren a esta.
+            TXT;
+        }
+
         $estado = $reunion->estado === EstadoReunion::Pausada ? 'en pausa' : 'grabándose';
         $minutos = intdiv((int) $reunion->fragmentos()->sum('duracion_segundos'), 60);
 

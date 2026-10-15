@@ -41,7 +41,7 @@ class TranscripcionEnVivoTest extends TestCase
 
         Http::assertSent(fn (PeticionHttp $peticion) => $peticion->hasHeader('Authorization', 'Bearer '.config('ai.providers.openai.key'))
             && $peticion['session']['type'] === 'transcription'
-            && $peticion['session']['audio']['input']['transcription'] === ['model' => 'gpt-4o-transcribe', 'language' => 'es']
+            && $peticion['session']['audio']['input']['transcription'] === ['model' => 'gpt-4o-mini-transcribe', 'language' => 'es', 'prompt' => 'Jarvis']
             && $peticion['session']['audio']['input']['turn_detection']['type'] === 'server_vad'
             && $peticion['expires_after']['seconds'] === 120);
     }
@@ -56,11 +56,19 @@ class TranscripcionEnVivoTest extends TestCase
         $this->assertStringNotContainsString('sk-secreta', $respuesta->getContent());
     }
 
-    public function test_only_recording_meetings_get_a_key()
+    public function test_a_paused_meeting_also_gets_a_key_to_hear_the_resume_order()
+    {
+        Http::fake(['api.openai.com/v1/realtime/client_secrets' => Http::response(['value' => 'ek_1', 'expires_at' => 1])]);
+
+        $this->postJson(route('reuniones.en-vivo', $this->reunion(EstadoReunion::Pausada)))->assertOk();
+    }
+
+    public function test_closed_meetings_do_not_get_a_key()
     {
         Http::fake();
 
-        $this->postJson(route('reuniones.en-vivo', $this->reunion(EstadoReunion::Pausada)))->assertConflict();
+        $this->postJson(route('reuniones.en-vivo', $this->reunion(EstadoReunion::Procesando)))->assertConflict();
+        $this->postJson(route('reuniones.en-vivo', $this->reunion(EstadoReunion::Completada)))->assertConflict();
         Http::assertNothingSent();
     }
 

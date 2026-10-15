@@ -28,3 +28,14 @@ export function formatearFecha(iso: string): string {
         year: 'numeric',
     });
 }
+
+/**
+ * Bytes a "850 KB" o "2.4 MB".
+ */
+export function formatearTamano(bytes: number): string {
+    const kb = bytes / 1024;
+
+    return kb < 1024
+        ? `${Math.max(1, Math.round(kb))} KB`
+        : `${(kb / 1024).toFixed(1)} MB`;
+}

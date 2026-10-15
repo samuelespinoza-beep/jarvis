@@ -11,7 +11,8 @@ import {
     RotateCw,
     Square,
 } from '@lucide/vue';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { toast } from 'vue-sonner';
 import { show as verReunion } from '@/actions/App/Http/Controllers/HistorialController';
 import ChatJarvis from '@/components/jarvis/ChatJarvis.vue';
 import NucleoJarvis from '@/components/jarvis/NucleoJarvis.vue';
@@ -19,21 +20,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGrabadora } from '@/composables/useGrabadora';
 import { useLineaDeTiempo } from '@/composables/useLineaDeTiempo';
+import { useOrdenesDeVoz } from '@/composables/useOrdenesDeVoz';
 import { useSeguimientoReunion } from '@/composables/useSeguimientoReunion';
-import { useTranscripcionEnVivo } from '@/composables/useTranscripcionEnVivo';
 import { formatearHora, formatearTiempo } from '@/lib/formato';
+import type { OrdenVoz } from '@/lib/ordenesVoz';
 import { jarvis } from '@/routes';
 import type {
+    ConfigDocumentos,
     ConfigGrabacion,
     EstadoFragmento,
     Reunion,
-    TramoReunion,
 } from '@/types';
 
 const props = defineProps<{
     reunionActiva: Reunion | null;
     ultimaReunion: Reunion | null;
     grabacion: ConfigGrabacion;
+    documentos: ConfigDocumentos;
+    dictadoMaxSegundos: number;
 }>();
 
 defineOptions({
@@ -51,7 +55,6 @@ const {
     subidas,
     error,
     analizador,
-    microfono,
     segundos,
     escuchar,
     pausar,
@@ -60,47 +63,13 @@ const {
     reintentar,
 } = useGrabadora(props.grabacion, props.reunionActiva);
 
-const enVivo = useTranscripcionEnVivo();
-const cajaEnVivo = ref<HTMLElement | null>(null);
-
-// La transcripción en vivo acompaña cada tramo grabado: empieza al escuchar o
-// reanudar y se corta al pausar o terminar.
-watch(
-    () => [estado.value === 'escuchando', microfono.value] as const,
-    ([grabando, stream]) => {
-        if (props.grabacion.enVivo && grabando && stream && reunion.value) {
-            void enVivo.conectar(reunion.value.id, stream);
-        } else {
-            enVivo.desconectar();
-        }
-    },
-);
-
-// Una reunión nueva empieza con el recuadro en vivo vacío.
-watch(
-    () => reunion.value?.id,
-    (id, anterior) => {
-        if (id && id !== anterior) {
-            enVivo.limpiar();
-        }
-    },
-);
-
-watch(
-    () => enVivo.lineas.value.map((l) => l.texto).join('\n'),
-    async () => {
-        await nextTick();
-        cajaEnVivo.value?.scrollTo({ top: cajaEnVivo.value.scrollHeight });
-    },
-);
-
 // Reunión terminada cuyo avance y resumen se muestran en el panel lateral.
 const reunionMostrada = ref<Reunion | null>(props.ultimaReunion);
 
-// Al empezar a grabar se muestra el panel de la reunión en curso.
-watch(estado, (actual) => {
-    if (actual === 'escuchando') {
-        pestana.value = 'reunion';
+// Al empezar a grabar se muestra el chat, donde se va resumiendo cada minuto.
+watch(estado, (actual, anterior) => {
+    if (actual === 'escuchando' && anterior === 'iniciando') {
+        pestana.value = 'chat';
     }
 });
 
@@ -119,21 +88,37 @@ const reunionAbierta = computed(
     () => !['inactivo', 'iniciando'].includes(estado.value),
 );
 
-const { tramos } = useLineaDeTiempo(
-    computed(() =>
-        reunionAbierta.value && reunion.value ? reunion.value.id : null,
-    ),
+// Reunión a la que pertenece el chat: la abierta y, al terminarla, la misma
+// (ahí aparece el acta) hasta empezar otra o pulsar "Nueva" en el chat.
+const reunionDelChat = ref<string | null>(props.reunionActiva?.id ?? null);
+
+watch(
+    () => (reunionAbierta.value ? reunion.value?.id : undefined),
+    (id) => {
+        if (id) {
+            reunionDelChat.value = id;
+        }
+    },
+    { immediate: true },
 );
+
+const {
+    tramos,
+    acta,
+    reunion: reunionChat,
+    actualizar: actualizarChat,
+} = useLineaDeTiempo(reunionDelChat);
+
+// Al terminar se consulta enseguida para mostrar en el chat que se genera el acta.
+watch(reunionAbierta, (abierta, antes) => {
+    if (antes && !abierta) {
+        actualizarChat();
+    }
+});
 
 const subidasPendientes = computed(() =>
     subidas.value.filter((subida) => subida.estado !== 'subido'),
 );
-
-function rango(tramo: TramoReunion): string {
-    return `${formatearTiempo(tramo.inicio_segundos)} – ${formatearTiempo(
-        tramo.inicio_segundos + tramo.duracion_segundos,
-    )}`;
-}
 
 // Si la reunión lleva mucho en pausa, probablemente ya es otra reunión.
 const LIMITE_PAUSA_MS = 2 * 60 * 60 * 1000;
@@ -202,6 +187,87 @@ function confirmarTerminar() {
         void terminar();
     }
 }
+
+// Órdenes de voz: "Jarvis, pausa / reanuda / termina la reunión" o una pregunta para el chat.
+const chat = ref<InstanceType<typeof ChatJarvis> | null>(null);
+
+function ejecutarOrden(orden: OrdenVoz) {
+    switch (orden.tipo) {
+        case 'pausar':
+            if (estado.value === 'escuchando') {
+                toast('Jarvis: pausando la reunión.');
+                void pausar();
+            }
+
+            break;
+        case 'reanudar':
+            if (estado.value === 'pausado') {
+                toast('Jarvis: reanudando la reunión.');
+                void reanudar();
+            }
+
+            break;
+        case 'terminar':
+            if (estado.value === 'escuchando' || estado.value === 'pausado') {
+                confirmarTerminar();
+            }
+
+            break;
+        case 'pregunta':
+            pestana.value = 'chat';
+            void chat.value?.proponer(orden.texto);
+            toast(
+                'Jarvis: tu pregunta está en el chat. Pulsa Enter para enviarla.',
+            );
+            break;
+    }
+}
+
+const ordenesVoz = useOrdenesDeVoz(ejecutarOrden);
+
+// En pausa se sigue escuchando (para "Jarvis, reanuda") solo un tiempo: así
+// una reunión olvidada en pausa no deja el micrófono abierto y cobrando.
+const LIMITE_ESCUCHA_EN_PAUSA_MS = 30 * 60 * 1000;
+
+const escuchaEnReposo = computed(() => {
+    if (estado.value !== 'pausado' || !reunion.value) {
+        return false;
+    }
+
+    const desde = new Date(
+        reunion.value.pausada_en ?? reunion.value.iniciada_en,
+    ).getTime();
+
+    return ahora.value - desde > LIMITE_ESCUCHA_EN_PAUSA_MS;
+});
+
+const reunionQueEscucha = computed(() => {
+    const abierta = [
+        'escuchando',
+        'pausando',
+        'pausado',
+        'reanudando',
+    ].includes(estado.value);
+
+    return props.grabacion.enVivo &&
+        abierta &&
+        reunion.value &&
+        !escuchaEnReposo.value
+        ? reunion.value.id
+        : null;
+});
+
+watch(
+    reunionQueEscucha,
+    (id) => {
+        if (id) {
+            void ordenesVoz.activar(id);
+        } else {
+            ordenesVoz.desactivar();
+        }
+    },
+    { immediate: true },
+);
 </script>
 
 <template>
@@ -217,8 +283,34 @@ function confirmarTerminar() {
             />
 
             <section
-                class="relative flex flex-1 flex-col items-center justify-center gap-6 p-6"
+                class="relative flex flex-1 flex-col items-center justify-center gap-6 p-6 pt-20"
             >
+                <!-- Un solo botón para empezar y terminar la reunión -->
+                <div class="absolute top-4 left-4 z-10">
+                    <Button
+                        v-if="!reunionAbierta"
+                        size="lg"
+                        :disabled="estado === 'iniciando'"
+                        class="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                        @click="iniciar"
+                    >
+                        <Mic />
+                        Empezar reunión
+                    </Button>
+                    <Button
+                        v-else-if="estado !== 'subida-pendiente'"
+                        size="lg"
+                        variant="destructive"
+                        :disabled="
+                            estado !== 'escuchando' && estado !== 'pausado'
+                        "
+                        @click="confirmarTerminar"
+                    >
+                        <Square />
+                        Terminar reunión
+                    </Button>
+                </div>
+
                 <div class="w-full max-w-[min(70vh,520px)]">
                     <NucleoJarvis
                         :analizador="analizador"
@@ -252,6 +344,43 @@ function confirmarTerminar() {
                         {{ reunion.titulo || 'Reunión sin título' }} · tiempo
                         grabado
                     </p>
+                    <p
+                        v-if="reunionQueEscucha"
+                        class="mt-1 flex items-center gap-2 text-xs text-cyan-200/50"
+                        :title="
+                            ordenesVoz.aviso.value ??
+                            'Ejemplos: «Jarvis, pausa la reunión», «Jarvis, reanuda», «Jarvis, termina la reunión» o «Jarvis, busca en la web…»'
+                        "
+                    >
+                        <span
+                            class="size-1.5 shrink-0 rounded-full"
+                            :class="
+                                ordenesVoz.estado.value === 'activo'
+                                    ? 'bg-emerald-400'
+                                    : ordenesVoz.estado.value === 'error' ||
+                                        ordenesVoz.aviso.value
+                                      ? 'bg-rose-400'
+                                      : 'animate-pulse bg-amber-400'
+                            "
+                        />
+                        <template v-if="ordenesVoz.aviso.value">
+                            {{ ordenesVoz.aviso.value }}
+                        </template>
+                        <template
+                            v-else-if="ordenesVoz.estado.value === 'activo'"
+                        >
+                            Di «Jarvis, …» para pausar, reanudar, terminar o
+                            preguntar
+                        </template>
+                        <template v-else>Activando órdenes de voz…</template>
+                    </p>
+                    <p
+                        v-else-if="escuchaEnReposo"
+                        class="mt-1 text-xs text-cyan-200/40"
+                    >
+                        Órdenes de voz en reposo por la pausa larga. Usa
+                        Reanudar.
+                    </p>
                 </div>
 
                 <div class="flex w-full max-w-md flex-col items-center gap-3">
@@ -266,7 +395,7 @@ function confirmarTerminar() {
                             )
                         }}. Si ahora empieza una reunión distinta, primero
                         <strong>termínala</strong> y luego presiona
-                        <strong>Escuchar</strong>.
+                        <strong>Empezar reunión</strong>.
                     </div>
 
                     <Input
@@ -278,16 +407,6 @@ function confirmarTerminar() {
                     />
 
                     <div class="flex flex-wrap justify-center gap-3">
-                        <Button
-                            v-if="!reunionAbierta"
-                            size="lg"
-                            :disabled="estado === 'iniciando'"
-                            class="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-                            @click="iniciar"
-                        >
-                            <Mic />
-                            Escuchar
-                        </Button>
                         <Button
                             v-if="
                                 estado === 'escuchando' || estado === 'pausando'
@@ -314,20 +433,6 @@ function confirmarTerminar() {
                             Reanudar
                         </Button>
                         <Button
-                            v-if="
-                                reunionAbierta && estado !== 'subida-pendiente'
-                            "
-                            size="lg"
-                            variant="destructive"
-                            :disabled="
-                                estado !== 'escuchando' && estado !== 'pausado'
-                            "
-                            @click="confirmarTerminar"
-                        >
-                            <Square />
-                            Terminar reunión
-                        </Button>
-                        <Button
                             v-if="estado === 'subida-pendiente'"
                             size="lg"
                             variant="outline"
@@ -346,74 +451,6 @@ function confirmarTerminar() {
                     >
                         <CircleAlert class="size-4 shrink-0" />
                         {{ error }}
-                    </p>
-                </div>
-
-                <div
-                    v-if="
-                        grabacion.enVivo &&
-                        (reunionAbierta || enVivo.lineas.value.length)
-                    "
-                    class="flex w-full max-w-3xl flex-col gap-2"
-                >
-                    <div
-                        class="flex items-center gap-2 font-mono text-[11px] tracking-[0.3em] text-cyan-400/70 uppercase"
-                    >
-                        <span
-                            class="size-2 rounded-full"
-                            :class="
-                                enVivo.estado.value === 'activo'
-                                    ? 'animate-pulse bg-rose-500'
-                                    : enVivo.estado.value === 'conectando'
-                                      ? 'animate-pulse bg-amber-400'
-                                      : 'bg-slate-600'
-                            "
-                        />
-                        En vivo
-                        <span
-                            class="tracking-normal text-cyan-200/40 normal-case"
-                        >
-                            · sin separar hablantes · el acta usa la
-                            transcripción completa
-                        </span>
-                    </div>
-                    <div
-                        ref="cajaEnVivo"
-                        class="h-36 overflow-y-auto rounded-lg border border-cyan-500/20 bg-black/40 p-3 text-base leading-relaxed"
-                        aria-live="polite"
-                    >
-                        <p
-                            v-if="!enVivo.lineas.value.length"
-                            class="text-sm text-cyan-200/40"
-                        >
-                            {{
-                                enVivo.estado.value === 'conectando'
-                                    ? 'Conectando…'
-                                    : enVivo.estado.value === 'activo'
-                                      ? 'Escuchando… el texto aparecerá aquí.'
-                                      : estado === 'pausado'
-                                        ? 'En pausa.'
-                                        : ''
-                            }}
-                        </p>
-                        <p
-                            v-for="linea in enVivo.lineas.value"
-                            :key="linea.id"
-                            :class="
-                                linea.final
-                                    ? 'text-cyan-50/90'
-                                    : 'text-cyan-100/50 italic'
-                            "
-                        >
-                            {{ linea.texto || '…' }}
-                        </p>
-                    </div>
-                    <p
-                        v-if="enVivo.mensaje.value"
-                        class="flex items-center gap-2 text-xs text-amber-300"
-                    >
-                        <CircleAlert class="size-3.5 shrink-0" />
-                        {{ enVivo.mensaje.value }}
                     </p>
                 </div>
             </section>
@@ -447,8 +484,19 @@ function confirmarTerminar() {
                 </div>
 
                 <ChatJarvis
+                    ref="chat"
                     v-show="pestana === 'chat'"
-                    :reunion-id="reunionAbierta && reunion ? reunion.id : null"
+                    :reunion-id="reunionDelChat"
+                    :reunion-abierta="
+                        reunionAbierta && reunion?.id === reunionDelChat
+                    "
+                    :reunion="reunionChat"
+                    :tramos="tramos"
+                    :acta="acta"
+                    :escuchando="escuchando"
+                    :documentos="documentos"
+                    :dictado-max-segundos="dictadoMaxSegundos"
+                    @salir-de-reunion="reunionDelChat = null"
                 />
 
                 <div v-show="pestana === 'reunion'" class="flex flex-col gap-4">
@@ -495,86 +543,36 @@ function confirmarTerminar() {
                             para generar el acta.
                         </p>
 
-                        <div class="flex flex-col gap-2">
-                            <h3
-                                class="font-mono text-xs tracking-[0.3em] text-cyan-400/60 uppercase"
+                        <p class="text-sm text-cyan-200/60">
+                            El resumen de cada minuto aparece en el
+                            <button
+                                type="button"
+                                class="font-medium text-cyan-300 underline underline-offset-2 hover:text-cyan-100"
+                                @click="pestana = 'chat'"
                             >
-                                Línea de tiempo
-                            </h3>
-                            <ol
-                                v-if="tramos.length"
-                                class="flex max-h-[55vh] flex-col gap-3 overflow-y-auto pr-1 text-sm"
-                            >
-                                <li
-                                    v-for="tramo in tramos"
-                                    :key="tramo.orden"
-                                    class="border-l-2 border-cyan-500/40 pl-3"
-                                >
-                                    <p
-                                        class="font-mono text-[11px] text-cyan-400/60"
-                                    >
-                                        {{ rango(tramo) }}
-                                    </p>
-                                    <template v-if="tramo.resumen">
-                                        <p class="font-medium text-cyan-50">
-                                            {{ tramo.resumen.tema }}
-                                        </p>
-                                        <p class="text-cyan-100/70">
-                                            {{ tramo.resumen.resumen }}
-                                        </p>
-                                    </template>
-                                    <p
-                                        v-else-if="tramo.estado === 'error'"
-                                        class="text-xs text-rose-300"
-                                        :title="tramo.error ?? undefined"
-                                    >
-                                        No se pudo transcribir este tramo.
-                                    </p>
-                                    <p
-                                        v-else
-                                        class="flex items-center gap-2 text-xs text-cyan-300/70"
-                                    >
-                                        <LoaderCircle
-                                            class="size-3 animate-spin"
-                                        />
-                                        {{
-                                            tramo.estado === 'listo'
-                                                ? 'Resumiendo…'
-                                                : 'Transcribiendo…'
-                                        }}
-                                    </p>
-                                </li>
-                            </ol>
-                            <p v-else class="text-sm text-cyan-200/50">
-                                Cada minuto grabado aparecerá aquí con su tema y
-                                un resumen corto.
-                            </p>
-                            <p
-                                v-if="escuchando && tramos.length"
-                                class="text-xs text-cyan-200/40"
-                            >
-                                Minuto en curso… se resume al completarse.
-                            </p>
-                            <p
-                                v-if="subidasPendientes.length"
-                                class="text-xs"
-                                :class="
-                                    subidasPendientes.some(
-                                        (s) => s.estado === 'error',
-                                    )
-                                        ? 'text-rose-300'
-                                        : 'text-cyan-200/50'
-                                "
-                            >
-                                {{
-                                    subidasPendientes.some(
-                                        (s) => s.estado === 'error',
-                                    )
-                                        ? 'No se pudo subir parte del audio.'
-                                        : 'Subiendo audio…'
-                                }}
-                            </p>
-                        </div>
+                                Chat</button
+                            >, junto con tus preguntas a Jarvis.
+                        </p>
+
+                        <p
+                            v-if="subidasPendientes.length"
+                            class="text-xs"
+                            :class="
+                                subidasPendientes.some(
+                                    (s) => s.estado === 'error',
+                                )
+                                    ? 'text-rose-300'
+                                    : 'text-cyan-200/50'
+                            "
+                        >
+                            {{
+                                subidasPendientes.some(
+                                    (s) => s.estado === 'error',
+                                )
+                                    ? 'No se pudo subir parte del audio.'
+                                    : 'Subiendo audio…'
+                            }}
+                        </p>
                     </template>
 
                     <template v-else-if="reunionMostrada">
@@ -730,10 +728,11 @@ function confirmarTerminar() {
                     </template>
 
                     <p v-else class="text-sm text-cyan-200/50">
-                        Presiona <strong class="text-cyan-100">Escuchar</strong>
-                        al iniciar la reunión y
-                        <strong class="text-cyan-100">Terminar</strong> al
-                        finalizar.
+                        Presiona
+                        <strong class="text-cyan-100">Empezar reunión</strong>
+                        al iniciar y
+                        <strong class="text-cyan-100">Terminar reunión</strong>
+                        al finalizar.
                     </p>
                 </div>
             </aside>

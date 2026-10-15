@@ -129,6 +129,8 @@ class ResumenPorTramosTest extends TestCase
             ->assertJsonPath('fragmentos.0.resumen.tema', 'Apertura')
             ->assertJsonPath('fragmentos.1.inicio_segundos', 60)
             ->assertJsonPath('fragmentos.1.duracion_segundos', 45)
-            ->assertJsonPath('fragmentos.1.resumen', null);
+            ->assertJsonPath('fragmentos.1.resumen', null)
+            // La hora de cada minuto ubica su resumen entre los mensajes del chat.
+            ->assertJsonPath('fragmentos.0.creado_en', fn (?string $hora) => $hora !== null && strtotime($hora) !== false);
     }
 }

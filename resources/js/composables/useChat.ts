@@ -5,12 +5,21 @@ import {
     enviar as enviarMensaje,
     mensajes as cargarMensajes,
 } from '@/actions/App/Http/Controllers/ChatController';
+import { tokenXsrf } from '@/lib/xsrf';
 
 export type MensajeChat = {
     rol: 'usuario' | 'jarvis';
     contenido: string;
+    // Nombre del documento adjunto al mensaje del usuario.
+    documento?: string | null;
+    // Hora del mensaje (ISO), para intercalarlo con los resúmenes de la reunión.
+    creado_en?: string | null;
     actividad?: string;
 };
+
+// Lo que se le pide a Jarvis si se adjunta un documento sin escribir nada.
+export const PEDIDO_RESUMEN_DOCUMENTO =
+    'Resume este documento y dime sus temas centrales.';
 
 type EventoStream = {
     type: string;
@@ -25,14 +34,6 @@ const ACTIVIDADES: Record<string, string> = {
     ConsultarReuniones: 'Buscando en las reuniones…',
     LeerReunion: 'Leyendo el acta…',
 };
-
-function tokenXsrf(): string {
-    const cookie = document.cookie
-        .split('; ')
-        .find((parte) => parte.startsWith('XSRF-TOKEN='));
-
-    return cookie ? decodeURIComponent(cookie.split('=')[1]) : '';
-}
 
 /**
  * Chat con Jarvis. La respuesta llega como eventos SSE y se va escribiendo
@@ -88,49 +89,69 @@ export function useChat(reunionId: Ref<string | null>) {
         error.value = null;
     }
 
-    async function enviar(texto: string) {
-        const mensaje = texto.trim();
+    /**
+     * Devuelve false si el mensaje no llegó a Jarvis, para que la vista no
+     * pierda el texto ni el documento que el usuario preparó.
+     */
+    async function enviar(texto: string, documento: File | null = null) {
+        const mensaje =
+            texto.trim() || (documento ? PEDIDO_RESUMEN_DOCUMENTO : '');
 
         if (!mensaje || enviando.value) {
-            return;
+            return false;
         }
 
         enviando.value = true;
         error.value = null;
-        mensajes.value.push({ rol: 'usuario', contenido: mensaje });
+        const ahora = new Date().toISOString();
+        mensajes.value.push({
+            rol: 'usuario',
+            contenido: mensaje,
+            documento: documento?.name,
+            creado_en: ahora,
+        });
         mensajes.value.push({
             rol: 'jarvis',
             contenido: '',
-            actividad: 'Pensando…',
+            creado_en: ahora,
+            actividad: documento ? 'Leyendo el documento…' : 'Pensando…',
         });
         // Se trabaja sobre el objeto reactivo del arreglo para que la vista se actualice.
         const respuesta = mensajes.value[mensajes.value.length - 1];
+
+        const datos = new FormData();
+        datos.append('mensaje', mensaje);
+
+        if (reunionId.value) {
+            datos.append('reunion_id', reunionId.value);
+        }
+
+        if (conversacionId.value) {
+            datos.append('conversacion_id', conversacionId.value);
+        }
+
+        if (documento) {
+            datos.append('documento', documento);
+        }
+
+        let enviado = false;
 
         try {
             const respuestaHttp = await fetch(enviarMensaje.url(), {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
                     Accept: 'text/event-stream',
                     'X-Requested-With': 'XMLHttpRequest',
                     'X-XSRF-TOKEN': tokenXsrf(),
                 },
-                body: JSON.stringify({
-                    mensaje,
-                    reunion_id: reunionId.value,
-                    conversacion_id: conversacionId.value,
-                }),
+                body: datos,
             });
 
             if (!respuestaHttp.ok || !respuestaHttp.body) {
-                throw new Error(
-                    respuestaHttp.status === 429
-                        ? 'Demasiados mensajes seguidos. Espera un momento.'
-                        : respuestaHttp.status === 419
-                          ? 'La sesión expiró. Recarga la página.'
-                          : 'Jarvis no pudo responder. Intenta de nuevo.',
-                );
+                throw new Error(await mensajeDeFallo(respuestaHttp));
             }
+
+            enviado = true;
 
             conversacionId.value =
                 respuestaHttp.headers.get('X-Conversacion-Id') ||
@@ -172,13 +193,18 @@ export function useChat(reunionId: Ref<string | null>) {
             error.value =
                 e instanceof Error ? e.message : 'Jarvis no pudo responder.';
 
-            if (!respuesta.contenido.trim()) {
+            if (!enviado) {
+                // No llegó a Jarvis: se quitan los dos mensajes y la vista conserva lo escrito.
+                mensajes.value.splice(-2);
+            } else if (!respuesta.contenido.trim()) {
                 mensajes.value.pop();
             }
         } finally {
             respuesta.actividad = undefined;
             enviando.value = false;
         }
+
+        return enviado;
     }
 
     function reiniciar() {
@@ -198,6 +224,26 @@ export function useChat(reunionId: Ref<string | null>) {
     );
 
     return { mensajes, conversacionId, enviando, error, nueva, enviar };
+}
+
+async function mensajeDeFallo(respuesta: Response): Promise<string> {
+    if (respuesta.status === 413) {
+        return 'El documento es demasiado grande para el servidor.';
+    }
+
+    if (respuesta.status === 422) {
+        const datos = (await respuesta.json().catch(() => null)) as {
+            message?: string;
+        } | null;
+
+        return datos?.message || 'Revisa el mensaje o el documento.';
+    }
+
+    return respuesta.status === 429
+        ? 'Demasiados mensajes seguidos. Espera un momento.'
+        : respuesta.status === 419
+          ? 'La sesión expiró. Recarga la página.'
+          : 'Jarvis no pudo responder. Intenta de nuevo.';
 }
 
 async function leerEventos(

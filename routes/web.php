@@ -1,11 +1,13 @@
 <?php
 
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\DictadoController;
 use App\Http\Controllers\FragmentoAudioController;
 use App\Http\Controllers\HistorialController;
 use App\Http\Controllers\JarvisController;
 use App\Http\Controllers\ReunionController;
 use App\Http\Controllers\TranscripcionEnVivoController;
+use App\Http\Controllers\VozController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect()->route('jarvis'))->name('home');
@@ -17,6 +19,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('chat/mensajes', [ChatController::class, 'mensajes'])->name('chat.mensajes');
     Route::post('chat', [ChatController::class, 'enviar'])->middleware('throttle:20,1')->name('chat.enviar');
+    Route::post('chat/voz', VozController::class)->middleware('throttle:30,1')->name('chat.voz');
+    Route::post('chat/dictado', DictadoController::class)->middleware('throttle:20,1')->name('chat.dictado');
 
     Route::get('reuniones', [HistorialController::class, 'index'])->name('reuniones.index');
     Route::get('reuniones/{reunion}', [HistorialController::class, 'show'])->name('reuniones.show');

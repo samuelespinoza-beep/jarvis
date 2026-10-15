@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\EstadoReunion;
 use App\Models\Reunion;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Http;
@@ -12,7 +11,9 @@ class TranscripcionEnVivoController extends Controller
 {
     /**
      * Entrega al navegador una llave temporal de OpenAI Realtime para que
-     * transmita el micrófono directamente y reciba el texto en vivo. La llave
+     * transmita el micrófono directamente y reciba el texto en vivo, donde
+     * busca las órdenes de voz ("Jarvis, pausa la reunión"). También sirve
+     * con la reunión en pausa, para poder decir "Jarvis, reanuda". La llave
      * real (OPENAI_API_KEY) nunca sale del servidor.
      */
     public function __invoke(Reunion $reunion): JsonResponse
@@ -21,8 +22,8 @@ class TranscripcionEnVivoController extends Controller
             return response()->json(['message' => 'La transcripción en vivo está desactivada.'], 404);
         }
 
-        if ($reunion->estado !== EstadoReunion::Grabando) {
-            return response()->json(['message' => 'La reunión no está grabando.'], 409);
+        if (! $reunion->estado->estaAbierta()) {
+            return response()->json(['message' => 'La reunión no está abierta.'], 409);
         }
 
         try {
@@ -43,6 +44,8 @@ class TranscripcionEnVivoController extends Controller
                                 'transcription' => [
                                     'model' => config('jarvis.en_vivo.modelo'),
                                     'language' => config('jarvis.transcripcion.idioma'),
+                                    // Ayuda a reconocer la palabra de activación en vez de "Yarvis" o "Jarvi".
+                                    'prompt' => 'Jarvis',
                                 ],
                                 // OpenAI detecta las pausas al hablar y cierra cada frase.
                                 'turn_detection' => [

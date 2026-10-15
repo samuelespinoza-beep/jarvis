@@ -7,6 +7,9 @@ use App\Enums\EstadoReunion;
 use App\Models\Reunion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Laravel\Ai\Files\StoredDocument;
 use Laravel\Ai\Prompts\AgentPrompt;
 use Tests\TestCase;
 
@@ -45,7 +48,8 @@ class ChatTest extends TestCase
             ->assertJsonPath('mensajes.0.rol', 'usuario')
             ->assertJsonPath('mensajes.0.contenido', '¿Quién eres?')
             ->assertJsonPath('mensajes.1.rol', 'jarvis')
-            ->assertJsonPath('mensajes.1.contenido', 'Hola, soy Jarvis.');
+            ->assertJsonPath('mensajes.1.contenido', 'Hola, soy Jarvis.')
+            ->assertJsonPath('mensajes.0.creado_en', fn (?string $hora) => $hora !== null && strtotime($hora) !== false);
     }
 
     public function test_a_conversation_can_be_continued()
@@ -154,5 +158,106 @@ class ChatTest extends TestCase
         $this->post(route('chat.enviar'), ['mensaje' => 'Hola', 'reunion_id' => $reunion->id])->streamedContent();
 
         Jarvis::assertPrompted(fn (AgentPrompt $prompt) => ! str_contains((string) $prompt->agent->instructions(), 'Reunión en curso'));
+    }
+
+    public function test_the_chat_of_a_finished_meeting_continues_and_jarvis_knows_it_has_an_acta()
+    {
+        Jarvis::fake(['Durante la reunión.', 'Ya con el acta.']);
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $reunion = Reunion::create([
+            'titulo' => 'Comité de logística',
+            'estado' => EstadoReunion::Grabando,
+            'iniciada_en' => now(),
+            'creada_por' => $user->id,
+        ]);
+
+        $this->post(route('chat.enviar'), ['mensaje' => '¿Qué se dijo?', 'reunion_id' => $reunion->id])->streamedContent();
+        $conversacion = $reunion->refresh()->conversacion_id;
+
+        $reunion->update(['estado' => EstadoReunion::Completada, 'finalizada_en' => now()]);
+
+        $this->post(route('chat.enviar'), ['mensaje' => '¿Y los acuerdos?', 'reunion_id' => $reunion->id])
+            ->assertHeader('X-Conversacion-Id', $conversacion)
+            ->streamedContent();
+
+        Jarvis::assertPrompted(function (AgentPrompt $prompt) use ($reunion) {
+            $instrucciones = (string) $prompt->agent->instructions();
+
+            return $prompt->contains('¿Y los acuerdos?')
+                && str_contains($instrucciones, 'ya terminada')
+                && str_contains($instrucciones, "ID: {$reunion->id}")
+                && str_contains($instrucciones, 'Ya tiene acta');
+        });
+
+        $this->getJson(route('chat.mensajes', ['reunion' => $reunion->id]))->assertJsonCount(4, 'mensajes');
+    }
+
+    public function test_a_document_is_stored_and_attached_for_jarvis_to_summarize()
+    {
+        Storage::fake('local');
+        Jarvis::fake(['### Resumen', 'Sigue siendo sobre el informe.']);
+        $user = User::factory()->create();
+
+        $respuesta = $this->actingAs($user)->post(route('chat.enviar'), [
+            'mensaje' => 'Resume este documento y dime sus temas centrales.',
+            'documento' => UploadedFile::fake()->create('Informe anual.pdf', 120, 'application/pdf'),
+        ]);
+        $respuesta->assertOk()->streamedContent();
+        $id = $respuesta->headers->get('X-Conversacion-Id');
+
+        $this->assertCount(1, Storage::disk('local')->files('documentos'));
+
+        Jarvis::assertPrompted(function (AgentPrompt $prompt) {
+            $documento = $prompt->attachments->first();
+
+            return $documento instanceof StoredDocument
+                && $documento->name() === 'Informe anual.pdf'
+                && str_starts_with($documento->path, 'documentos/');
+        });
+
+        // El documento queda en la conversación para las preguntas siguientes.
+        $this->post(route('chat.enviar'), ['mensaje' => '¿Y las cifras?', 'conversacion_id' => $id])
+            ->streamedContent();
+
+        $this->getJson(route('chat.mensajes', ['conversacion' => $id]))
+            ->assertJsonPath('mensajes.0.documento', 'Informe anual.pdf')
+            ->assertJsonPath('mensajes.2.documento', null);
+    }
+
+    public function test_unsupported_documents_are_rejected_with_a_json_error()
+    {
+        Storage::fake('local');
+        Jarvis::fake();
+
+        // Sin pedir JSON, como hace el chat al esperar el stream.
+        $this->actingAs(User::factory()->create())
+            ->post(route('chat.enviar'), [
+                'mensaje' => 'Resume esto',
+                'documento' => UploadedFile::fake()->create('programa.exe', 10, 'application/x-msdownload'),
+            ], ['Accept' => 'text/event-stream'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['documento' => 'Formato no admitido']);
+
+        Jarvis::assertNeverPrompted();
+        $this->assertEmpty(Storage::disk('local')->files('documentos'));
+    }
+
+    public function test_documents_over_the_size_limit_are_rejected()
+    {
+        Storage::fake('local');
+        Jarvis::fake();
+        config(['jarvis.chat.documento_max_kb' => 50]);
+
+        $this->actingAs(User::factory()->create())
+            ->post(route('chat.enviar'), [
+                'mensaje' => 'Resume esto',
+                'documento' => UploadedFile::fake()->create('grande.pdf', 51, 'application/pdf'),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['documento' => 'supera el máximo']);
+
+        Jarvis::assertNeverPrompted();
     }
 }

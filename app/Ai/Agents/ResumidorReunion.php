@@ -33,6 +33,8 @@ class ResumidorReunion implements Agent, HasStructuredOutput
         Reglas:
         - Escribe en español neutro y profesional, en tercera persona.
         - Básate solo en lo que se dijo. No inventes datos, cifras, responsables ni fechas.
+        - Ignora las frases dirigidas a Jarvis, el asistente que graba (por ejemplo "Jarvis, pausa la reunión"
+          o "Jarvis, busca en la web..."): son órdenes al sistema, no parte de la conversación.
         - La transcripción puede tener errores de reconocimiento de voz: interpreta con sentido común,
           pero si algo es ambiguo, dilo en lugar de suponer.
         - "minuto_aprox" es el minuto de la reunión (número entero) en que empieza a tratarse el punto.

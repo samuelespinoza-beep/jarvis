@@ -42,6 +42,11 @@ export type ConfigGrabacion = {
     enVivo: boolean;
 };
 
+export type ConfigDocumentos = {
+    formatos: string[];
+    maxKb: number;
+};
+
 export type PuntoResumen = {
     tema: string;
     detalle: string;
@@ -73,4 +78,6 @@ export type TramoReunion = {
     inicio_segundos: number;
     duracion_segundos: number;
     resumen: { tema: string; resumen: string; puntos: string[] } | null;
+    // Hora en que terminó el minuto (ISO), para ubicarlo en el chat.
+    creado_en: string | null;
 };
