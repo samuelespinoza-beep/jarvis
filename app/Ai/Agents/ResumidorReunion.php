@@ -10,7 +10,8 @@ use Laravel\Ai\Promptable;
 use Stringable;
 
 /**
- * Convierte la transcripción de una reunión en un acta estructurada.
+ * Convierte la transcripción de una reunión, junto con su chat y los
+ * documentos adjuntados en él, en un acta estructurada.
  */
 #[Timeout(240)]
 class ResumidorReunion implements Agent, HasStructuredOutput
@@ -24,7 +25,8 @@ class ResumidorReunion implements Agent, HasStructuredOutput
     {
         return <<<'TXT'
         Eres el Asistente IA que redacta las actas de las reuniones del directorio de la empresa
-        (gerentes y jefes de área). Recibirás la transcripción automática de una reunión en español.
+        (gerentes y jefes de área). Recibirás la transcripción automática de una reunión en español, lo que
+        se conversó en el chat del Asistente IA durante la reunión y los documentos e imágenes que se adjuntaron en él.
 
         Cada línea tiene el formato "[mm:ss] Hablante X: texto". Los hablantes se identifican solo con
         letras y la misma letra puede no ser la misma persona en distintos tramos de la reunión, así que
@@ -37,6 +39,14 @@ class ResumidorReunion implements Agent, HasStructuredOutput
           reunión" o "Asistente, busca en la web..."): son órdenes al sistema, no parte de la conversación.
         - La transcripción puede tener errores de reconocimiento de voz: interpreta con sentido común,
           pero si algo es ambiguo, dilo en lugar de suponer.
+        - El chat es parte de la reunión. Cada línea tiene el formato "[mm:ss] Usuario: texto" o
+          "[mm:ss] Asistente IA: texto", con "(por voz)" si se dijo en la conversación por voz en vivo. Lo que
+          escribe, dice o pregunta el usuario cuenta como un aporte más a la reunión. Las respuestas del Asistente IA (búsquedas, análisis, resúmenes de documentos) son material
+          de apoyo: úsalas como contexto, pero no las presentes como acuerdos ni como opiniones de los asistentes.
+        - Los documentos e imágenes adjuntos son material revisado en la reunión. Incluye en las demás secciones lo que de
+          ellos se discutió o sea relevante para la agenda, sin transcribirlos. En "documentos_revisados" pon
+          cada documento o imagen (con su nombre de archivo) y en "aporte" lo principal que aporta a la reunión, en 1 o 2
+          oraciones. Si no hay documentos, lista vacía.
         - "minuto_aprox" es el minuto de la reunión (número entero) en que empieza a tratarse el punto.
         - En los acuerdos, deja "responsable" y "fecha_limite" en null si no se mencionan.
         - Si una sección no tiene contenido, devuelve una lista vacía.
@@ -78,6 +88,10 @@ class ResumidorReunion implements Agent, HasStructuredOutput
             'pendientes' => $schema->array()->items($schema->string())->required(),
             'riesgos_o_puntos_criticos' => $schema->array()->items($schema->string())->required(),
             'sugerencias_de_mejora' => $schema->array()->items($schema->string())->required(),
+            'documentos_revisados' => $schema->array()->items($schema->object(fn (JsonSchema $schema) => [
+                'nombre' => $schema->string()->required(),
+                'aporte' => $schema->string()->required(),
+            ]))->required(),
             'agenda' => $schema->array()->items($schema->object(fn (JsonSchema $schema) => [
                 'punto' => $schema->string()->required(),
                 'estado' => $schema->string()->enum(['tratado', 'parcial', 'no_tratado'])->required(),

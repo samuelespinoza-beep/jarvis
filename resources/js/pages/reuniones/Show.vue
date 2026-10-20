@@ -3,6 +3,9 @@ import { Head, http, Link, router } from '@inertiajs/vue3';
 import {
     ArrowLeft,
     CircleAlert,
+    Download,
+    FileText,
+    Image as ImageIcon,
     LoaderCircle,
     Printer,
     RotateCw,
@@ -10,6 +13,7 @@ import {
 } from '@lucide/vue';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import {
+    documento as descargarDocumento,
     index as historial,
     show as verReunion,
 } from '@/actions/App/Http/Controllers/HistorialController';
@@ -18,8 +22,10 @@ import {
     reprocesar,
 } from '@/actions/App/Http/Controllers/ReunionController';
 import ActaReunion from '@/components/jarvis/ActaReunion.vue';
+import ChatReunion from '@/components/jarvis/ChatReunion.vue';
 import EstadoReunionBadge from '@/components/jarvis/EstadoReunionBadge.vue';
 import { Button } from '@/components/ui/button';
+import type { MensajeChat } from '@/composables/useChat';
 import { formatearFecha, formatearHora, formatearTiempo } from '@/lib/formato';
 import type { ContenidoResumen, Reunion, SegmentoTranscripcion } from '@/types';
 
@@ -36,6 +42,8 @@ const props = defineProps<{
     };
     resumen: (VersionResumen & { contenido: ContenidoResumen }) | null;
     versiones: VersionResumen[];
+    documentos: { nombre: string; archivo: string; imagen: boolean }[];
+    chat: MensajeChat[];
     segmentos: SegmentoTranscripcion[];
 }>();
 
@@ -45,7 +53,7 @@ defineOptions({
     },
 });
 
-const vista = ref<'acta' | 'transcripcion'>('acta');
+const vista = ref<'acta' | 'transcripcion' | 'chat'>('acta');
 const enviando = ref(false);
 const error = ref<string | null>(null);
 
@@ -216,11 +224,41 @@ function cambiarVersion(evento: Event) {
             Hubo un problema al procesar la reunión. Presiona "Reintentar".
         </div>
 
+        <section v-if="documentos.length" class="flex flex-col gap-2">
+            <h2 class="text-sm font-medium text-muted-foreground">
+                Documentos de la reunión
+            </h2>
+            <ul class="flex flex-wrap gap-2">
+                <li v-for="documento in documentos" :key="documento.archivo">
+                    <a
+                        :href="
+                            descargarDocumento.url({
+                                reunion: reunion.id,
+                                archivo: documento.archivo,
+                            })
+                        "
+                        class="flex max-w-full items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors hover:border-hud-acento/60 hover:bg-hud-acento/5"
+                        download
+                    >
+                        <component
+                            :is="documento.imagen ? ImageIcon : FileText"
+                            class="size-4 shrink-0 text-hud-acento"
+                        />
+                        <span class="truncate">{{ documento.nombre }}</span>
+                        <Download
+                            class="size-3.5 shrink-0 text-muted-foreground print:hidden"
+                        />
+                    </a>
+                </li>
+            </ul>
+        </section>
+
         <div class="flex gap-1 border-b print:hidden" role="tablist">
             <button
                 v-for="opcion in [
                     { valor: 'acta', texto: 'Acta' },
                     { valor: 'transcripcion', texto: 'Transcripción' },
+                    { valor: 'chat', texto: 'Chat' },
                 ] as const"
                 :key="opcion.valor"
                 role="tab"
@@ -248,6 +286,8 @@ function cambiarVersion(evento: Event) {
                 IA puede cometer errores.
             </p>
         </template>
+
+        <ChatReunion v-else-if="vista === 'chat'" :mensajes="chat" />
 
         <template v-else>
             <p v-if="!segmentos.length" class="text-sm text-muted-foreground">

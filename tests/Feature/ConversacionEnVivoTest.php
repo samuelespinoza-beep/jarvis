@@ -13,6 +13,7 @@ use Illuminate\Http\Client\Request as PeticionHttp;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Laravel\Ai\Files\StoredDocument;
 use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Prompts\AgentPrompt;
@@ -226,6 +227,40 @@ class ConversacionEnVivoTest extends TestCase
 
         $this->assertEqualsWithDelta(now()->subMinutes(5)->timestamp, $horas[0]->timestamp, 2);
         $this->assertEqualsWithDelta(now()->subMinutes(4)->timestamp, $horas[1]->timestamp, 2);
+    }
+
+    public function test_the_voice_is_saved_in_parts_without_duplicating_messages()
+    {
+        $this->actingAs(User::factory()->create());
+        $pregunta = (string) Str::uuid();
+        $respuesta = (string) Str::uuid();
+
+        // Mientras se habla: primero la pregunta y una respuesta a medias.
+        $id = $this->postJson(route('chat.en-vivo.guardar'), ['mensajes' => [
+            ['id' => $pregunta, 'rol' => 'usuario', 'contenido' => '¿Cómo vamos?', 'creado_en' => now()->subMinutes(3)->toIso8601String()],
+            ['id' => $respuesta, 'rol' => 'jarvis', 'contenido' => 'Vamos', 'creado_en' => now()->subMinutes(2)->toIso8601String()],
+        ]])->assertOk()->json('conversacion_id');
+
+        // Al terminar se reenvía todo: lo ya guardado solo se actualiza.
+        $this->postJson(route('chat.en-vivo.guardar'), ['conversacion_id' => $id, 'mensajes' => [
+            ['id' => $pregunta, 'rol' => 'usuario', 'contenido' => '¿Cómo vamos?'],
+            ['id' => $respuesta, 'rol' => 'jarvis', 'contenido' => 'Vamos bien en tráfico.'],
+            ['id' => (string) Str::uuid(), 'rol' => 'usuario', 'contenido' => 'Gracias.'],
+        ]])->assertOk()->assertJsonPath('conversacion_id', $id);
+
+        $this->getJson(route('chat.mensajes', ['conversacion' => $id]))
+            ->assertJsonCount(3, 'mensajes')
+            ->assertJsonPath('mensajes.0.id', $pregunta)
+            ->assertJsonPath('mensajes.0.en_vivo', true)
+            ->assertJsonPath('mensajes.1.contenido', 'Vamos bien en tráfico.');
+
+        // El ID de un mensaje de otra conversación no se toca.
+        $otra = $this->postJson(route('chat.en-vivo.guardar'), ['mensajes' => [
+            ['id' => $respuesta, 'rol' => 'jarvis', 'contenido' => 'Pisado'],
+        ]])->assertOk()->json('conversacion_id');
+
+        $this->assertNotSame($id, $otra);
+        $this->assertSame('Vamos bien en tráfico.', ConversationMessage::query()->find($respuesta)->content);
     }
 
     public function test_the_voice_gets_the_critical_advisor_rules_without_the_written_format()

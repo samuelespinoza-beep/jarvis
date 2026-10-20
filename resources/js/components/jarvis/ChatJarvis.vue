@@ -18,7 +18,7 @@ import {
     VolumeX,
     X,
 } from '@lucide/vue';
-import { useEventListener } from '@vueuse/core';
+import { useEventListener, useObjectUrl } from '@vueuse/core';
 import { computed, nextTick, ref, toRef, watch } from 'vue';
 import { show as verReunion } from '@/actions/App/Http/Controllers/HistorialController';
 import { Button } from '@/components/ui/button';
@@ -32,7 +32,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { esSoloDocumento, useChat } from '@/composables/useChat';
+import { esImagen, esSoloDocumento, useChat } from '@/composables/useChat';
 import type { MensajeChat } from '@/composables/useChat';
 import { useConversacionEnVivo } from '@/composables/useConversacionEnVivo';
 import { useDictado } from '@/composables/useDictado';
@@ -61,6 +61,8 @@ const props = withDefaults(
         voces: ConfigVoces;
         // Se espera antes de abrir el micrófono de la voz en vivo (pausar la reunión que se graba).
         prepararEnVivo?: () => Promise<void>;
+        // Al silenciar la voz, la reunión puede seguir grabando.
+        reanudarEnSilencio?: () => Promise<void>;
     }>(),
     {
         reunionAbierta: false,
@@ -124,10 +126,29 @@ async function hablarEnVivo() {
         voz: voz.voz.value,
         reunionId: props.reunionId,
         conversacionId: () => conversacionId.value,
+        alCrearConversacion: (id) => {
+            if (!props.reunionId) {
+                conversacionId.value = id;
+            }
+        },
     });
 }
 
 watch(conversandoEnVivo, (activo) => emit('enVivo', activo));
+
+// Silenciada, la voz suelta el micrófono y la reunión retoma la grabación; al
+// activarla, primero se pausa la grabación para que la voz no se escuche a sí misma.
+async function alternarSilencioEnVivo() {
+    if (enVivo.silenciado.value) {
+        await props.prepararEnVivo?.();
+        await enVivo.alternarSilencio();
+
+        return;
+    }
+
+    await enVivo.alternarSilencio();
+    await props.reanudarEnSilencio?.();
+}
 const cajaTexto = ref<HTMLTextAreaElement | null>(null);
 
 // Con Enter (o ➤) el dictado se envía apenas se transcribe; con ✓ queda en la caja.
@@ -185,6 +206,14 @@ useEventListener(window, 'keydown', (evento: KeyboardEvent) => {
 
 const texto = ref('');
 const documento = ref<File | null>(null);
+// Miniatura de la imagen a punto de enviarse.
+const vistaPrevia = useObjectUrl(
+    computed(() =>
+        documento.value && esImagen(documento.value)
+            ? documento.value
+            : undefined,
+    ),
+);
 const arrastrando = ref(false);
 const lista = ref<HTMLElement | null>(null);
 const selectorArchivo = ref<HTMLInputElement | null>(null);
@@ -198,6 +227,11 @@ type Entrada =
 const hora = (iso: string | null | undefined) =>
     iso ? Date.parse(iso) : Number.MAX_SAFE_INTEGER;
 
+// Mensajes que el chat ya trae guardados (la voz se guarda por partes).
+const guardadosEnChat = computed(
+    () => new Set(mensajes.value.map((mensaje) => mensaje.id)),
+);
+
 /**
  * Todo lo de la reunión en una sola conversación y en orden: los mensajes,
  * el resumen de cada minuto grabado y, al terminar, el acta.
@@ -210,17 +244,20 @@ const entradas = computed<Entrada[]>(() => {
             hora: hora(mensaje.creado_en),
             mensaje,
         })),
-        // Lo que se va diciendo en la conversación en vivo (aún sin guardar).
-        ...enVivo.mensajes.value.map((dicho) => ({
-            tipo: 'mensaje' as const,
-            clave: `v${dicho.id}`,
-            hora: hora(dicho.creado_en),
-            mensaje: {
-                rol: dicho.rol,
-                contenido: dicho.contenido || '…',
-                creado_en: dicho.creado_en,
-            },
-        })),
+        // Lo que se va diciendo en la conversación en vivo. Se guarda por
+        // partes; si el chat ya lo trae guardado, no se repite.
+        ...enVivo.mensajes.value
+            .filter((dicho) => !guardadosEnChat.value.has(dicho.uuid))
+            .map((dicho) => ({
+                tipo: 'mensaje' as const,
+                clave: `v${dicho.id}`,
+                hora: hora(dicho.creado_en),
+                mensaje: {
+                    rol: dicho.rol,
+                    contenido: dicho.contenido || '…',
+                    creado_en: dicho.creado_en,
+                },
+            })),
     ];
 
     const terminada =
@@ -307,7 +344,7 @@ function adjuntar(archivo: File | undefined) {
     }
 
     if (archivo.size > props.documentos.maxKb * 1024) {
-        error.value = `El documento pesa ${formatearTamano(archivo.size)} y el máximo es ${formatearTamano(props.documentos.maxKb * 1024)}.`;
+        error.value = `El archivo pesa ${formatearTamano(archivo.size)} y el máximo es ${formatearTamano(props.documentos.maxKb * 1024)}.`;
 
         return;
     }
@@ -315,6 +352,29 @@ function adjuntar(archivo: File | undefined) {
     error.value = null;
 
     documento.value = archivo;
+}
+
+// Una captura copiada (Ctrl+V) se adjunta como imagen; el texto se pega normal.
+function alPegar(evento: ClipboardEvent) {
+    const archivo = Array.from(evento.clipboardData?.files ?? []).find(
+        esImagen,
+    );
+
+    if (!archivo) {
+        return;
+    }
+
+    evento.preventDefault();
+    const extension =
+        archivo.type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png';
+    const hora = new Date()
+        .toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+        .replace(':', '.');
+    adjuntar(
+        new File([archivo], `Captura ${hora}.${extension}`, {
+            type: archivo.type,
+        }),
+    );
 }
 
 function alElegirArchivo(evento: Event) {
@@ -460,7 +520,7 @@ watch(
             v-if="arrastrando"
             class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-hud-acento/70 bg-hud-fondo/90 text-sm text-hud-texto"
         >
-            Suelta el documento para adjuntarlo
+            Suelta el documento o la imagen para adjuntarlo
         </div>
 
         <div class="flex items-center justify-between">
@@ -581,7 +641,8 @@ watch(
                     @click="selectorArchivo?.click()"
                 >
                     <Paperclip class="size-4 shrink-0" />
-                    Adjunta un documento ({{ nombresFormatos }}) para resumirlo
+                    Adjunta un documento o una imagen ({{ nombresFormatos }})
+                    para analizarlo
                 </button>
             </div>
 
@@ -597,8 +658,24 @@ watch(
                         v-if="entrada.mensaje.rol === 'usuario'"
                         class="flex max-w-[85%] flex-col gap-1.5 rounded-2xl rounded-br-sm bg-hud-acento/90 px-3 py-2 text-sm text-hud-sobre-acento"
                     >
+                        <a
+                            v-if="entrada.mensaje.imagen"
+                            :href="entrada.mensaje.imagen"
+                            target="_blank"
+                            rel="noopener"
+                            :title="entrada.mensaje.documento ?? undefined"
+                        >
+                            <img
+                                :src="entrada.mensaje.imagen"
+                                :alt="
+                                    entrada.mensaje.documento ??
+                                    'Imagen adjunta'
+                                "
+                                class="max-h-60 rounded-lg bg-white/10 object-contain"
+                            />
+                        </a>
                         <span
-                            v-if="entrada.mensaje.documento"
+                            v-else-if="entrada.mensaje.documento"
                             class="flex items-center gap-1.5 rounded-md bg-white/20 px-2 py-1 text-xs font-medium"
                         >
                             <FileText class="size-3.5 shrink-0" />
@@ -872,9 +949,9 @@ watch(
                     :title="
                         enVivo.silenciado.value
                             ? 'Activar micrófono'
-                            : 'Silenciar micrófono (la conversación sigue abierta)'
+                            : 'Silenciar micrófono (la conversación sigue abierta y la reunión vuelve a grabar)'
                     "
-                    @click="enVivo.alternarSilencio"
+                    @click="alternarSilencioEnVivo"
                 >
                     <MicOff v-if="enVivo.silenciado.value" class="size-3.5" />
                     <Mic v-else class="size-3.5" />
@@ -894,7 +971,16 @@ watch(
                 <div
                     class="inline-flex max-w-full items-center gap-2 rounded-lg border border-hud-acento/30 bg-hud-fondo/70 px-2.5 py-1.5 text-sm text-hud-texto"
                 >
-                    <FileText class="size-4 shrink-0 text-hud-acento-texto" />
+                    <img
+                        v-if="vistaPrevia"
+                        :src="vistaPrevia"
+                        alt=""
+                        class="size-10 shrink-0 rounded object-cover"
+                    />
+                    <FileText
+                        v-else
+                        class="size-4 shrink-0 text-hud-acento-texto"
+                    />
                     <span class="min-w-0 truncate">{{ documento.name }}</span>
                     <span class="shrink-0 text-xs text-hud-suave">
                         {{ formatearTamano(documento.size) }}
@@ -902,7 +988,7 @@ watch(
                     <button
                         type="button"
                         class="shrink-0 rounded p-0.5 text-hud-suave hover:bg-hud-superficie hover:text-hud-texto"
-                        aria-label="Quitar documento"
+                        aria-label="Quitar adjunto"
                         :disabled="enviando"
                         @click="documento = null"
                     >
@@ -971,7 +1057,9 @@ watch(
                 maxlength="4000"
                 :placeholder="
                     documento
-                        ? 'Pregunta algo del documento, o envíalo así'
+                        ? esImagen(documento)
+                            ? 'Pregunta algo de la imagen, o envíala así'
+                            : 'Pregunta algo del documento, o envíalo así'
                         : conversandoEnVivo
                           ? 'Escribe o adjunta algo mientras conversan…'
                           : 'Escríbele al Asistente IA…'
@@ -979,6 +1067,7 @@ watch(
                 aria-label="Mensaje para el Asistente IA"
                 class="min-h-[3.5rem] w-full resize-none bg-transparent px-3 pt-3 pb-1 text-sm text-hud-texto placeholder:text-hud-suave/70 focus:outline-none"
                 @keydown="alPresionarTecla"
+                @paste="alPegar"
             />
 
             <div class="flex items-center gap-1 px-2 pb-2">
@@ -988,8 +1077,8 @@ watch(
                     variant="ghost"
                     :disabled="enviando"
                     class="size-8 rounded-full text-hud-suave hover:bg-hud-superficie hover:text-hud-texto"
-                    aria-label="Adjuntar documento"
-                    :title="`Adjuntar documento (${nombresFormatos})`"
+                    aria-label="Adjuntar documento o imagen"
+                    :title="`Adjuntar documento o imagen (${nombresFormatos})`"
                     @click="selectorArchivo?.click()"
                 >
                     <Paperclip />

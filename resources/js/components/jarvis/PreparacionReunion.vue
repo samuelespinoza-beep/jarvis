@@ -13,20 +13,23 @@ import {
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import InformePrevioController from '@/actions/App/Http/Controllers/InformePrevioController';
+import AgendaDesdeArchivos from '@/components/jarvis/AgendaDesdeArchivos.vue';
 import { Button } from '@/components/ui/button';
 import { formatearHora } from '@/lib/formato';
-import type { InformePrevio } from '@/types';
+import type { ConfigDocumentos, InformePrevio } from '@/types';
 
 const MAX_PUNTOS = 20;
 
 defineProps<{
     // Con la reunión en curso la agenda se guarda al cambiarla.
     enCurso: boolean;
+    documentos: ConfigDocumentos;
 }>();
 
 const agenda = defineModel<string[]>('agenda', { required: true });
 
 const nuevoPunto = ref('');
+const generandoDesdeArchivos = ref(false);
 const informe = ref<InformePrevio | null>(null);
 const preparando = ref(false);
 const error = ref<string | null>(null);
@@ -60,6 +63,16 @@ function agregar(punto = nuevoPunto.value) {
     if (punto === nuevoPunto.value) {
         nuevoPunto.value = '';
     }
+}
+
+// Lo que propone la IA reemplaza la agenda o se suma sin repetir puntos.
+function aplicarGenerada(puntos: string[], modo: 'reemplazar' | 'agregar') {
+    const base = modo === 'agregar' ? agenda.value : [];
+    agenda.value = [
+        ...base,
+        ...puntos.filter((punto) => !base.includes(punto)),
+    ].slice(0, MAX_PUNTOS);
+    generandoDesdeArchivos.value = false;
 }
 
 function quitar(indice: number) {
@@ -191,7 +204,24 @@ async function preparar() {
                     @keydown="alPresionarTecla"
                 />
             </div>
+            <button
+                v-if="!generandoDesdeArchivos"
+                type="button"
+                class="flex items-center gap-1.5 self-start text-xs text-hud-acento-texto hover:underline"
+                @click="generandoDesdeArchivos = true"
+            >
+                <Sparkles class="size-3.5" />
+                Generar desde capturas, PDF o texto
+            </button>
         </div>
+
+        <AgendaDesdeArchivos
+            v-if="generandoDesdeArchivos"
+            :documentos="documentos"
+            :puntos-actuales="agenda.length"
+            @aplicar="aplicarGenerada"
+            @cerrar="generandoDesdeArchivos = false"
+        />
 
         <div
             class="flex flex-col gap-3 rounded-xl border border-hud-acento/25 bg-hud-superficie/20 p-4"

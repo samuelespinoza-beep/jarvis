@@ -93,8 +93,9 @@ return [
     |
     | Modelo del chat con el Asistente IA, que puede buscar en internet, leer páginas,
     | ver videos de YouTube y consultar las reuniones guardadas. También se le
-    | puede adjuntar un documento para resumirlo o hacerle preguntas: OpenAI
-    | lee el archivo directamente, sin extraer el texto en el servidor.
+    | puede adjuntar un documento o una imagen para resumirlo o hacerle
+    | preguntas: OpenAI lee el archivo directamente, sin extraer el texto en el
+    | servidor.
     |
     */
 
@@ -106,6 +107,9 @@ return [
         'documento_max_kb' => (int) env('JARVIS_DOCUMENTO_MAX_KB', 10240),
 
         'documento_formatos' => ['pdf', 'docx', 'txt', 'md', 'csv'],
+
+        // Imágenes (capturas, gráficos, fotos): el modelo las ve directamente.
+        'imagen_formatos' => ['jpg', 'jpeg', 'png', 'webp'],
     ],
 
     /*

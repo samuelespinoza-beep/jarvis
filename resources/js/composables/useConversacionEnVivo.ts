@@ -1,4 +1,5 @@
 import { http } from '@inertiajs/vue3';
+import { useEventListener } from '@vueuse/core';
 import { onBeforeUnmount, ref } from 'vue';
 import {
     guardar as guardarConversacion,
@@ -6,6 +7,7 @@ import {
     sesion as abrirSesion,
 } from '@/actions/App/Http/Controllers/ConversacionEnVivoController';
 import { ACTIVIDADES } from '@/composables/useChat';
+import { tokenXsrf } from '@/lib/xsrf';
 
 export type EstadoEnVivo =
     | 'apagado'
@@ -17,6 +19,8 @@ export type EstadoEnVivo =
 
 export type MensajeEnVivo = {
     id: string;
+    // ID con el que se guarda en el chat (el de OpenAI no sirve: no es un UUID).
+    uuid: string;
     rol: 'usuario' | 'jarvis';
     contenido: string;
     creado_en: string;
@@ -40,7 +44,16 @@ type Opciones = {
     reunionId: string | null;
     // Se lee cada vez: el chat puede crear su conversación en medio de la voz (al adjuntar un documento).
     conversacionId: () => string | null;
+    // Cuando lo dicho crea la conversación del chat, para que lo escrito siga en ella.
+    alCrearConversacion?: (conversacionId: string) => void;
 };
+
+// Con el micrófono silenciado la voz queda en espera mientras la reunión graba;
+// si se olvida así, se cierra sola a los 30 minutos.
+const LIMITE_SILENCIADA_MS = 30 * 60 * 1000;
+
+// Espera tras terminar una frase antes de guardarla, para juntar varias en un envío.
+const ESPERA_GUARDADO_MS = 1500;
 
 // Lo que se le pasa a la voz de una respuesta escrita (el resumen de un documento, por ejemplo).
 const MAX_CARACTERES_RESPUESTA = 6000;
@@ -77,6 +90,8 @@ export function useConversacionEnVivo(
     let conexion: RTCPeerConnection | null = null;
     let canal: RTCDataChannel | null = null;
     let microfono: MediaStream | null = null;
+    // Por donde sale el micrófono hacia OpenAI: al silenciar se le quita la pista.
+    let emisor: RTCRtpSender | null = null;
     let parlante: HTMLAudioElement | null = null;
     let opciones: Opciones | null = null;
     let herramientasPendientes = 0;
@@ -96,12 +111,130 @@ export function useConversacionEnVivo(
     // Distingue la conversación vigente de una que se cerró mientras conectaba.
     let sesion = 0;
 
+    // Lo dicho se guarda en el chat por partes mientras se habla, así no se
+    // pierde si se cierra la página o si el acta se genera antes de terminar.
+    // Lo ya guardado (uuid → texto) y las frases que terminaron de decirse:
+    const guardados = new Map<string, string>();
+    const terminados = new Set<string>();
+    let conversacionGuardada: string | null = null;
+    let colaGuardado: Promise<unknown> = Promise.resolve();
+    let esperaGuardado: number | undefined;
+
+    function porGuardar(todo: boolean) {
+        return mensajes.value
+            .filter((m) => {
+                const texto = m.contenido.trim();
+
+                return (
+                    texto &&
+                    guardados.get(m.uuid) !== texto &&
+                    (todo || terminados.has(m.id))
+                );
+            })
+            .map((m) => ({
+                id: m.uuid,
+                rol: m.rol,
+                contenido: m.contenido.trim(),
+                creado_en: m.creado_en,
+            }));
+    }
+
+    function conversacionActual(): string | null {
+        return opciones?.conversacionId() ?? conversacionGuardada;
+    }
+
+    async function enviarLoDicho(todo: boolean): Promise<string | null> {
+        const dichos = porGuardar(todo);
+
+        if (!dichos.length || !opciones) {
+            return conversacionActual();
+        }
+
+        const nueva = !conversacionActual();
+        const respuesta = await http.getClient().request({
+            method: 'post',
+            url: guardarConversacion.url(),
+            data: {
+                reunion_id: opciones.reunionId,
+                conversacion_id: conversacionActual(),
+                mensajes: dichos,
+            },
+            headers: { Accept: 'application/json' },
+        });
+        const id = enJson<{ conversacion_id: string }>(
+            respuesta,
+        ).conversacion_id;
+        conversacionGuardada = id;
+        dichos.forEach((dicho) => guardados.set(dicho.id, dicho.contenido));
+
+        if (nueva) {
+            opciones.alCrearConversacion?.(id);
+        }
+
+        return id;
+    }
+
+    /**
+     * Guarda lo dicho que falte. De a un envío a la vez, para que dos envíos
+     * seguidos no creen dos conversaciones. Con todo=true incluye también la
+     * frase que se está diciendo.
+     */
+    function guardarLoDicho(todo = false): Promise<string | null> {
+        const envio = colaGuardado.then(() => enviarLoDicho(todo));
+        colaGuardado = envio.catch(() => null);
+
+        return envio;
+    }
+
+    function terminoFrase(id: string) {
+        terminados.add(id);
+        window.clearTimeout(esperaGuardado);
+        // Si falla, se reintenta con la frase siguiente o al terminar.
+        esperaGuardado = window.setTimeout(
+            () => void guardarLoDicho().catch(() => undefined),
+            ESPERA_GUARDADO_MS,
+        );
+    }
+
+    /**
+     * Al cerrar o recargar la página: manda lo que falte con keepalive, que el
+     * navegador envía aunque la página ya se esté cerrando.
+     */
+    function guardarAlCerrar() {
+        if (estado.value === 'apagado' || !opciones) {
+            return;
+        }
+
+        const dichos = porGuardar(true);
+
+        if (!dichos.length) {
+            return;
+        }
+
+        void fetch(guardarConversacion.url(), {
+            method: 'POST',
+            keepalive: true,
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': tokenXsrf(),
+            },
+            body: JSON.stringify({
+                reunion_id: opciones.reunionId,
+                conversacion_id: conversacionActual(),
+                mensajes: dichos,
+            }),
+        }).catch(() => undefined);
+    }
+
     function mensaje(id: string, rol: MensajeEnVivo['rol']): MensajeEnVivo {
         let existente = mensajes.value.find((m) => m.id === id);
 
         if (!existente) {
             mensajes.value.push({
                 id,
+                uuid: crypto.randomUUID(),
                 rol,
                 contenido: '',
                 creado_en: new Date().toISOString(),
@@ -149,7 +282,7 @@ export function useConversacionEnVivo(
 
     function queHizo(texto: string, documento: string | null): string {
         return documento
-            ? `adjuntó el documento «${documento}»${texto ? ` con el mensaje «${texto}»` : ''}`
+            ? `adjuntó ${/\.(jpe?g|png|webp)$/i.test(documento) ? 'la imagen' : 'el documento'} «${documento}»${texto ? ` con el mensaje «${texto}»` : ''}`
             : `escribió: «${texto}»`;
     }
 
@@ -212,6 +345,18 @@ export function useConversacionEnVivo(
         }
 
         ultimaActividad = Date.now();
+
+        // Silenciada no habla (su voz se grabaría en la reunión): solo se entera.
+        if (silenciado.value) {
+            avisar(
+                `[Aviso del chat, no dicho en voz] El usuario ${queHizo(texto, documento)} y el chat ya le respondió ` +
+                    'por escrito. Tiene el micrófono silenciado: no lo digas en voz alta, solo tenlo en cuenta.\n\n' +
+                    respuesta.slice(0, MAX_CARACTERES_RESPUESTA),
+            );
+
+            return;
+        }
+
         avisar(
             `[Aviso del chat, no dicho en voz] Esta es tu respuesta a lo que el usuario ${queHizo(texto, documento)}; ` +
                 'ya está escrita en pantalla. Dísela ahora en voz alta, con las mismas ideas y en el mismo orden, ' +
@@ -299,6 +444,7 @@ export function useConversacionEnVivo(
                     // Un golpe o eco que no resultó en palabras no queda como mensaje.
                     if (texto) {
                         mensaje(evento.item_id, 'usuario').contenido = texto;
+                        terminoFrase(evento.item_id);
                     } else {
                         quitarMensaje(evento.item_id);
                     }
@@ -327,6 +473,7 @@ export function useConversacionEnVivo(
                 ) {
                     mensaje(evento.item_id, 'jarvis').contenido =
                         evento.transcript.trim();
+                    terminoFrase(evento.item_id);
                 }
 
                 break;
@@ -439,6 +586,7 @@ export function useConversacionEnVivo(
         canal = null;
         conexion = null;
         microfono = null;
+        emisor = null;
         silenciado.value = false;
         parlante = null;
         herramientasPendientes = 0;
@@ -463,6 +611,9 @@ export function useConversacionEnVivo(
         const numeroSesion = ++sesion;
         opciones = datos;
         mensajes.value = [];
+        guardados.clear();
+        terminados.clear();
+        conversacionGuardada = null;
         error.value = null;
         estado.value = 'conectando';
 
@@ -500,7 +651,7 @@ export function useConversacionEnVivo(
                     parlante.srcObject = evento.streams[0];
                 }
             };
-            pc.addTrack(microfono.getAudioTracks()[0]);
+            emisor = pc.addTrack(microfono.getAudioTracks()[0]);
             pc.onconnectionstatechange = () => {
                 if (
                     numeroSesion === sesion &&
@@ -551,10 +702,13 @@ export function useConversacionEnVivo(
             // Sin hablar un rato, se cierra sola para no seguir cobrando.
             ultimaActividad = Date.now();
             vigilante = window.setInterval(() => {
+                // Silenciada queda en espera más tiempo: no envía audio.
+                const limite = silenciado.value
+                    ? LIMITE_SILENCIADA_MS
+                    : minutosInactividad * 60 * 1000;
                 const quieto =
                     estado.value === 'escuchando' &&
-                    Date.now() - ultimaActividad >
-                        minutosInactividad * 60 * 1000;
+                    Date.now() - ultimaActividad > limite;
 
                 if (quieto) {
                     void terminar();
@@ -587,16 +741,9 @@ export function useConversacionEnVivo(
 
         sesion++;
         cerrarConexion();
+        window.clearTimeout(esperaGuardado);
 
-        const dichos = mensajes.value
-            .filter((m) => m.contenido.trim())
-            .map((m) => ({
-                rol: m.rol,
-                contenido: m.contenido.trim(),
-                creado_en: m.creado_en,
-            }));
-
-        if (!dichos.length || !opciones) {
+        if (!mensajes.value.some((m) => m.contenido.trim()) || !opciones) {
             estado.value = 'apagado';
             mensajes.value = [];
 
@@ -606,21 +753,14 @@ export function useConversacionEnVivo(
         estado.value = 'guardando';
 
         try {
-            const respuesta = await http.getClient().request({
-                method: 'post',
-                url: guardarConversacion.url(),
-                data: {
-                    reunion_id: opciones.reunionId,
-                    conversacion_id: opciones.conversacionId(),
-                    mensajes: dichos,
-                },
-                headers: { Accept: 'application/json' },
-            });
-            const id = enJson<{ conversacion_id: string }>(
-                respuesta,
-            ).conversacion_id;
-            // Primero se recarga el chat con lo guardado y recién ahí se quita lo provisional.
-            await alGuardar(id);
+            // Lo que ya se guardó por partes no se vuelve a enviar.
+            const id = await guardarLoDicho(true);
+
+            if (id) {
+                // Primero se recarga el chat con lo guardado y recién ahí se quita lo provisional.
+                await alGuardar(id);
+            }
+
             mensajes.value = [];
 
             return id;
@@ -634,20 +774,65 @@ export function useConversacionEnVivo(
         }
     }
 
-    function alternarSilencio() {
-        const pista = microfono?.getAudioTracks()[0];
-
-        if (!pista) {
+    /**
+     * Silencia o activa el micrófono de la voz. Silenciada, la conversación
+     * sigue abierta pero suelta el micrófono y se calla, así la grabación de
+     * la reunión puede seguir sin captar su voz. Al activarla, el micrófono se
+     * vuelve a abrir con cancelación de eco: la grabación lo abre sin ella y
+     * el navegador puede habérsela quitado también a la voz.
+     */
+    async function alternarSilencio() {
+        if (
+            !emisor ||
+            !['escuchando', 'pensando', 'hablando'].includes(estado.value)
+        ) {
             return;
         }
 
-        silenciado.value = !silenciado.value;
-        aplicarMicrofono();
+        const numeroSesion = sesion;
         ultimaActividad = Date.now();
+
+        if (!silenciado.value) {
+            silenciado.value = true;
+
+            if (respuestaEnCurso || vozSonando) {
+                enviar({ type: 'response.cancel' });
+                enviar({ type: 'output_audio_buffer.clear' });
+            }
+
+            microfono?.getTracks().forEach((pista) => pista.stop());
+            microfono = null;
+            await emisor.replaceTrack(null);
+
+            return;
+        }
+
+        try {
+            const flujo = await abrirMicrofono();
+
+            if (numeroSesion !== sesion || !emisor) {
+                flujo.getTracks().forEach((pista) => pista.stop());
+
+                return;
+            }
+
+            microfono = flujo;
+            await emisor.replaceTrack(flujo.getAudioTracks()[0]);
+            silenciado.value = false;
+            aplicarMicrofono();
+        } catch {
+            error.value =
+                'No se pudo volver a abrir el micrófono. Revisa el permiso del navegador.';
+        }
     }
 
+    useEventListener(window, 'pagehide', guardarAlCerrar);
+
+    // Al salir de la página del chat sin terminar la conversación, se guarda igual.
     onBeforeUnmount(() => {
+        guardarAlCerrar();
         sesion++;
+        window.clearTimeout(esperaGuardado);
         cerrarConexion();
     });
 

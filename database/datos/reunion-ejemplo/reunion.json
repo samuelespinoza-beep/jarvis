@@ -1,0 +1,348 @@
+{
+    "titulo": "Estrategia digital e ingresos (reunión de ejemplo)",
+    "agenda": [
+        "Tráfico web y meta de 30–35M de páginas vistas mensuales. Lidera: Gerente Digital. Temas: caída por Discover/SGE y Social First, plan SEO y video.",
+        "Ingresos digitales y proyecto Puente China. Lidera: Gerenta Comercial. Temas: USD 115 mil mensuales, YouTube, preventa de USD 500 mil para 2027.",
+        "Observatorio de Integridad Digital (OID). Lidera: Jefe de la Unidad de Investigación. Temas: piloto de USD 30 mil, software y financiamiento."
+    ],
+    "iniciada_en": "2026-10-20T11:28:00-05:00",
+    "finalizada_en": "2026-10-20T11:31:15-05:00",
+    "duracion_segundos": 195,
+    "costo_audio_segundos": 195,
+    "costo_tokens": 26242,
+    "fragmentos": [
+        {
+            "orden": 1,
+            "duracion_segundos": 65,
+            "resumen": {
+                "tema": "Tráfico web y meta de páginas vistas",
+                "resumen": "El tráfico bajó de 60M a 28–30M de páginas vistas por Discover, SGE y el consumo en redes. Se fijó presentar un plan SEO para llegar a 30–35M.",
+                "puntos": [
+                    "97% consume en redes sin migrar a la web",
+                    "Rediseño: +200 px y sin banners en móvil",
+                    "Plan SEO el 3 de noviembre"
+                ]
+            },
+            "segmentos": [
+                {
+                    "orden": 1,
+                    "hablante": "A",
+                    "inicio_segundos": 0,
+                    "fin_segundos": 9,
+                    "texto": "Buenas tardes a todos. Empezamos. Hoy revisamos el informe consolidado de estrategias de mayo a octubre; ya lo subí al chat del asistente."
+                },
+                {
+                    "orden": 2,
+                    "hablante": "B",
+                    "inicio_segundos": 9,
+                    "fin_segundos": 24,
+                    "texto": "Arranco con tráfico. Pasamos de sesenta millones de páginas vistas al mes a entre veintiocho y treinta millones. La causa principal son los cambios de Google Discover, los resúmenes de SGE y que el noventa y siete por ciento de la audiencia consume en redes sin entrar a la web."
+                },
+                {
+                    "orden": 3,
+                    "hablante": "A",
+                    "inicio_segundos": 24,
+                    "fin_segundos": 33,
+                    "texto": "¿Y la meta de treinta a treinta y cinco millones es realista para fin de año?"
+                },
+                {
+                    "orden": 4,
+                    "hablante": "B",
+                    "inicio_segundos": 33,
+                    "fin_segundos": 47,
+                    "texto": "Es exigente, pero alcanzable si subimos la frecuencia de publicación y hacemos SEO de calidad. El rediseño de LR.pe ayuda: ganamos doscientos píxeles de ancho y sacamos los banners invasivos de la portada móvil, que es el noventa por ciento del tráfico."
+                },
+                {
+                    "orden": 5,
+                    "hablante": "A",
+                    "inicio_segundos": 47,
+                    "fin_segundos": 56,
+                    "texto": "De acuerdo. Entonces queda como acuerdo: Digital presenta en dos semanas el plan SEO con metas semanales de páginas vistas."
+                },
+                {
+                    "orden": 6,
+                    "hablante": "B",
+                    "inicio_segundos": 56,
+                    "fin_segundos": 64,
+                    "texto": "Perfecto, lo presento el lunes tres de noviembre."
+                }
+            ]
+        },
+        {
+            "orden": 2,
+            "duracion_segundos": 65,
+            "resumen": {
+                "tema": "Ingresos digitales y Puente China",
+                "resumen": "Los ingresos digitales rondan USD 115 mil al mes, con YouTube en USD 30 mil. Puente China busca 10 auspiciadores y USD 500 mil para 2027.",
+                "puntos": [
+                    "Vacaciones de RMP: −USD 400 diarios",
+                    "Meta: 3 auspiciadores antes del 2/11"
+                ]
+            },
+            "segmentos": [
+                {
+                    "orden": 1,
+                    "hablante": "C",
+                    "inicio_segundos": 65,
+                    "fin_segundos": 80,
+                    "texto": "Paso a ingresos. Estamos en unos ciento quince mil dólares al mes: entre cincuenta y sesenta mil de programática, treinta mil de YouTube, quince mil de proyectos especiales de Google y doce mil de fact-checking."
+                },
+                {
+                    "orden": 2,
+                    "hablante": "A",
+                    "inicio_segundos": 80,
+                    "fin_segundos": 88,
+                    "texto": "Asistente, ¿cuánto pesa YouTube sobre el total de ingresos digitales según el informe?"
+                },
+                {
+                    "orden": 3,
+                    "hablante": "C",
+                    "inicio_segundos": 88,
+                    "fin_segundos": 101,
+                    "texto": "Mientras responde: YouTube depende mucho de los conductores. Cuando Rosa María Palacios salió de vacaciones perdimos unos cuatrocientos dólares diarios."
+                },
+                {
+                    "orden": 4,
+                    "hablante": "C",
+                    "inicio_segundos": 101,
+                    "fin_segundos": 118,
+                    "texto": "Y en Puente China, la reunión con el embajador fue el catorce de octubre. La meta es captar diez auspiciadores y quinientos mil dólares para la plataforma anual dos mil veintisiete. Ya quitamos las banderas del banner de YouTube para cuidar la independencia."
+                },
+                {
+                    "orden": 5,
+                    "hablante": "A",
+                    "inicio_segundos": 118,
+                    "fin_segundos": 129,
+                    "texto": "Bien. Acuerdo: Comercial cierra al menos tres auspiciadores de Puente China antes del dos de noviembre, el aniversario de las relaciones con China."
+                }
+            ]
+        },
+        {
+            "orden": 3,
+            "duracion_segundos": 65,
+            "resumen": {
+                "tema": "Observatorio de Integridad Digital",
+                "resumen": "El piloto del OID requiere USD 30 mil por tres meses; el financiamiento queda pendiente. Se alertó de compromisos de octubre sin reporte.",
+                "puntos": [
+                    "Preferencia por desarrollo propio",
+                    "Karaoke y Buenazo sin avance reportado",
+                    "Gira del Papa del 6 al 16 de noviembre"
+                ]
+            },
+            "segmentos": [
+                {
+                    "orden": 1,
+                    "hablante": "D",
+                    "inicio_segundos": 130,
+                    "fin_segundos": 146,
+                    "texto": "Sobre el Observatorio de Integridad Digital: el piloto necesita treinta mil dólares por tres meses. Estamos probando Brandwatch y Wra, pero cuestan entre dieciséis y dieciocho mil al año; preferimos terminar el desarrollo propio en menos de tres meses."
+                },
+                {
+                    "orden": 2,
+                    "hablante": "A",
+                    "inicio_segundos": 146,
+                    "fin_segundos": 156,
+                    "texto": "El financiamiento todavía no está cerrado. Lo vemos en la próxima reunión con números del convenio con la Fundación."
+                },
+                {
+                    "orden": 3,
+                    "hablante": "D",
+                    "inicio_segundos": 156,
+                    "fin_segundos": 170,
+                    "texto": "Una alerta rápida: los compromisos del catálogo musical y de Buenazo vencían el dieciocho y el veinte de octubre, y no tenemos reporte de avance."
+                },
+                {
+                    "orden": 4,
+                    "hablante": "A",
+                    "inicio_segundos": 170,
+                    "fin_segundos": 182,
+                    "texto": "Que lo reporten Eduardo Cáceres y Carla Dellafredad esta semana. Y no olvidemos el especial de la visita del Papa: el hub va al cincuenta o sesenta por ciento y la gira es del seis al dieciséis de noviembre."
+                },
+                {
+                    "orden": 5,
+                    "hablante": "A",
+                    "inicio_segundos": 182,
+                    "fin_segundos": 194,
+                    "texto": "Cerramos aquí. Gracias a todos."
+                }
+            ]
+        }
+    ],
+    "resumenes": [
+        {
+            "version": 1,
+            "modelo": "gpt-6-luna",
+            "contenido": {
+                "titulo_sugerido": "Estrategia digital e ingresos",
+                "resumen_ejecutivo": "Se revisó la caída del tráfico web, que pasó de unos 60 millones a entre 28 y 30 millones de páginas vistas mensuales, y se consideró exigente pero alcanzable la meta de 30–35 millones. Los ingresos digitales se sitúan en aproximadamente USD 115 mil mensuales; para Puente China se busca captar diez auspiciadores y alcanzar USD 500 mil para la plataforma anual de 2027. El piloto del Observatorio de Integridad Digital requiere USD 30 mil por tres meses, pero su financiamiento aún no está cerrado. También se solicitaron avances de compromisos vencidos o próximos a vencer y se informó sobre el progreso del especial de la visita del Papa.",
+                "temas_tratados": [
+                    "Caída del tráfico web y meta de páginas vistas",
+                    "Rediseño de LR.pe y plan SEO",
+                    "Ingresos digitales y dependencia de conductores de YouTube",
+                    "Proyecto Puente China y captación de auspiciadores",
+                    "Observatorio de Integridad Digital: piloto, software y financiamiento",
+                    "Estado de los compromisos del catálogo musical y Buenazo",
+                    "Avance del especial de la visita del Papa"
+                ],
+                "puntos_principales": [
+                    {
+                        "tema": "Tráfico web y meta mensual",
+                        "detalle": "El tráfico bajó de aproximadamente 60 millones a entre 28 y 30 millones de páginas vistas mensuales. Se atribuyó principalmente a cambios en Google Discover y SGE, y al consumo de contenidos en redes sin ingreso a la web. La meta de 30–35 millones para fin de año se consideró exigente, pero alcanzable con mayor frecuencia de publicación y SEO de calidad.",
+                        "minuto_aprox": 0
+                    },
+                    {
+                        "tema": "Rediseño de LR.pe y plan SEO",
+                        "detalle": "Se indicó que el rediseño amplió el lienzo en 200 píxeles y retiró los banners invasivos de la portada móvil, entorno que concentra el 90 % del tráfico. Se acordó que Digital presentará un plan SEO con metas semanales de páginas vistas; se mencionó el 3 de noviembre como fecha de presentación.",
+                        "minuto_aprox": 0
+                    },
+                    {
+                        "tema": "Ingresos digitales y YouTube",
+                        "detalle": "Se reportaron ingresos digitales aproximados de USD 115 mil mensuales: USD 50–60 mil de programática, USD 30 mil de YouTube, USD 15 mil de proyectos especiales de Google y USD 12 mil de fact-checking. La ausencia vacacional de Rosa María Palacios habría supuesto una pérdida aproximada de USD 400 diarios.",
+                        "minuto_aprox": 1
+                    },
+                    {
+                        "tema": "Puente China",
+                        "detalle": "Se informó que la reunión con el embajador tuvo lugar el 14 de octubre. El proyecto busca captar diez auspiciadores y USD 500 mil para la plataforma anual de 2027. Se acordó que Comercial cierre al menos tres auspiciadores antes del 2 de noviembre. También se señaló que se retiraron las banderas del banner de YouTube para preservar la independencia.",
+                        "minuto_aprox": 1
+                    },
+                    {
+                        "tema": "Observatorio de Integridad Digital",
+                        "detalle": "El piloto requiere USD 30 mil por tres meses. Se están probando Brandwatch y Wra, con costos indicados de entre USD 16 mil y USD 18 mil anuales, mientras se prefiere completar el desarrollo propio en menos de tres meses. El financiamiento sigue pendiente y se revisará en la próxima reunión con cifras del convenio con la Fundación.",
+                        "minuto_aprox": 2
+                    }
+                ],
+                "puntos_secundarios": [
+                    {
+                        "tema": "Participación de YouTube en los ingresos",
+                        "detalle": "A partir de los montos mencionados en la reunión y del informe adjunto, la respuesta de apoyo del Asistente IA estimó que YouTube representa alrededor del 26 % del total mensual de ingresos digitales.",
+                        "minuto_aprox": 1
+                    },
+                    {
+                        "tema": "Catálogo musical y Buenazo",
+                        "detalle": "Se señaló que los compromisos asociados al catálogo musical y a Buenazo vencían el 18 y el 20 de octubre, respectivamente, y que no se contaba con reportes de avance.",
+                        "minuto_aprox": 2
+                    },
+                    {
+                        "tema": "Especial de la visita del Papa",
+                        "detalle": "Se informó que el hub digital registra entre 50 % y 60 % de avance y que la gira está prevista del 6 al 16 de noviembre.",
+                        "minuto_aprox": 2
+                    }
+                ],
+                "acuerdos": [
+                    {
+                        "descripcion": "Digital presentará un plan SEO con metas semanales de páginas vistas.",
+                        "responsable": "Digital",
+                        "fecha_limite": "3 de noviembre de 2026; se mencionó como lunes, aunque esa fecha corresponde a martes."
+                    },
+                    {
+                        "descripcion": "Comercial cerrará al menos tres auspiciadores para Puente China.",
+                        "responsable": "Comercial",
+                        "fecha_limite": "Antes del 2 de noviembre de 2026."
+                    },
+                    {
+                        "descripcion": "Presentar el estado de los compromisos del catálogo musical y de Buenazo.",
+                        "responsable": "Eduardo Cáceres y Carla Dellafredad",
+                        "fecha_limite": "Esta semana; no se precisó un día."
+                    },
+                    {
+                        "descripcion": "Revisar el financiamiento del OID con cifras del convenio con la Fundación.",
+                        "responsable": null,
+                        "fecha_limite": "Próxima reunión; no se indicó fecha."
+                    }
+                ],
+                "pendientes": [
+                    "Confirmar el estado de avance del compromiso del catálogo musical, cuyo plazo venció el 18 de octubre.",
+                    "Confirmar el estado de avance del compromiso de Buenazo, cuyo plazo vencía el 20 de octubre.",
+                    "Definir y cerrar el financiamiento del piloto del OID y revisar las cifras del convenio con la Fundación.",
+                    "Completar el desarrollo propio del software del OID y evaluar las herramientas en prueba.",
+                    "Aclarar la fecha exacta de presentación del plan SEO, dado que el 3 de noviembre de 2026 no es lunes."
+                ],
+                "riesgos_o_puntos_criticos": [
+                    "El tráfico web se encuentra por debajo del nivel histórico y expuesto a cambios algorítmicos y al consumo de contenidos en redes sociales.",
+                    "La monetización de YouTube depende de conductores específicos; se reportó una merma durante la ausencia de Rosa María Palacios.",
+                    "El financiamiento del piloto del OID no está cerrado, mientras que las licencias de software evaluadas tienen costos anuales relevantes.",
+                    "No había reportes de avance de dos compromisos con fechas de octubre ya vencidas o coincidentes con la fecha de la reunión.",
+                    "La fecha del 3 de noviembre se mencionó como lunes, pero corresponde a martes en 2026."
+                ],
+                "sugerencias_de_mejora": [
+                    "Confirmar la fecha del plan SEO y registrar sus metas semanales con métricas y responsables de seguimiento.",
+                    "Presentar en la próxima reunión escenarios de financiamiento del OID y una comparación de costos entre licencias y desarrollo propio.",
+                    "Solicitar los reportes pendientes de catálogo musical y Buenazo antes de actualizar sus estados.",
+                    "Incluir un plan de continuidad de programación para reducir el impacto de ausencias de conductores en los ingresos de YouTube."
+                ],
+                "documentos_revisados": [
+                    {
+                        "nombre": "INFORME CONSOLIDADO DE ESTRATEGIAS PERIODÍSTICAS.pdf",
+                        "aporte": "Recopila antecedentes y datos de mayo a octubre de 2026 sobre la caída del tráfico, el rediseño web, los ingresos digitales, Puente China y el OID. También detalla compromisos de catálogo musical y Buenazo, así como el avance previsto para el especial de la visita del Papa."
+                    }
+                ],
+                "agenda": [
+                    {
+                        "punto": "Tráfico web y meta de 30–35M de páginas vistas mensuales. Lidera: Gerente Digital. Temas: caída por Discover/SGE y Social First, plan SEO y video.",
+                        "estado": "parcial",
+                        "comentario": "Se trataron la caída, sus causas, la meta y el rediseño móvil; se acordó presentar un plan SEO. No se desarrolló un plan específico de video."
+                    },
+                    {
+                        "punto": "Ingresos digitales y proyecto Puente China. Lidera: Gerenta Comercial. Temas: USD 115 mil mensuales, YouTube, preventa de USD 500 mil para 2027.",
+                        "estado": "tratado",
+                        "comentario": "Se revisaron los ingresos mensuales, la participación de YouTube, la meta de USD 500 mil para 2027 y el compromiso de cerrar al menos tres auspiciadores antes del 2 de noviembre."
+                    },
+                    {
+                        "punto": "Observatorio de Integridad Digital (OID). Lidera: Jefe de la Unidad de Investigación. Temas: piloto de USD 30 mil, software y financiamiento.",
+                        "estado": "parcial",
+                        "comentario": "Se revisaron el costo del piloto y las herramientas en prueba; el financiamiento sigue abierto y se llevará información del convenio con la Fundación a la próxima reunión."
+                    }
+                ]
+            },
+            "tokens": 26242,
+            "creado_en": "2026-10-20T11:48:52-05:00"
+        }
+    ],
+    "chat": [
+        {
+            "rol": "user",
+            "contenido": "Te adjunto el informe consolidado para la reunión.",
+            "en_vivo": false,
+            "creado_en": "2026-10-20T11:28:05-05:00",
+            "adjunto": {
+                "archivo": "adjunto-1.pdf",
+                "nombre": "INFORME CONSOLIDADO DE ESTRATEGIAS PERIODÍSTICAS.pdf"
+            }
+        },
+        {
+            "rol": "assistant",
+            "contenido": "Es el **Informe consolidado de estrategias, objetivos y oportunidades de negocio** de GLRP, basado en las actas de mayo a octubre de 2026. Cubre estrategia digital y streaming, adopción de IA, monetización, investigación (OID) y metas de producción.\n\n¿Quiere que lo resuma, que busque un dato concreto o que revise alguna sección para esta reunión?",
+            "en_vivo": false,
+            "creado_en": "2026-10-20T11:28:14-05:00",
+            "adjunto": null
+        },
+        {
+            "rol": "user",
+            "contenido": "¿Cuánto pesa YouTube sobre el total de ingresos digitales según el informe?",
+            "en_vivo": true,
+            "creado_en": "2026-10-20T11:29:22-05:00",
+            "adjunto": null
+        },
+        {
+            "rol": "assistant",
+            "contenido": "Según el informe, YouTube aporta unos 30 mil dólares de un total aproximado de 115 mil al mes: alrededor del 26 %. Ojo, depende mucho de los conductores estelares; la ausencia de Rosa María Palacios costó unos 400 dólares diarios.",
+            "en_vivo": true,
+            "creado_en": "2026-10-20T11:29:27-05:00",
+            "adjunto": null
+        },
+        {
+            "rol": "user",
+            "contenido": "¿Qué compromisos del informe tienen fecha en octubre?",
+            "en_vivo": false,
+            "creado_en": "2026-10-20T11:30:38-05:00",
+            "adjunto": null
+        },
+        {
+            "rol": "assistant",
+            "contenido": "Dos, y ninguno tiene avance documentado:\n\n- **Catálogo musical y karaoke**: responsable Eduardo Cáceres, fecha 18/10/2026. **Vencido.**\n- **Expansión presencial de Buenazo**: responsable Carla Dellafredad, fecha 20/10/2026. **Vence hoy.**\n\nRecomiendo pedir el estado de ambos antes de dar por buenos los plazos; sin reporte, no hay forma de saber si están en riesgo.",
+            "en_vivo": false,
+            "creado_en": "2026-10-20T11:30:46-05:00",
+            "adjunto": null
+        }
+    ]
+}

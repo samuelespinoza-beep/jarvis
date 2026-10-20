@@ -8,24 +8,36 @@ import {
 import { tokenXsrf } from '@/lib/xsrf';
 
 export type MensajeChat = {
+    // Los guardados lo traen; los recién enviados todavía no.
+    id?: string;
     rol: 'usuario' | 'jarvis';
     contenido: string;
-    // Nombre del documento adjunto al mensaje del usuario.
+    // Dicho en la conversación por voz en vivo.
+    en_vivo?: boolean;
+    // Nombre del documento o la imagen adjunta al mensaje del usuario.
     documento?: string | null;
+    // Si lo adjunto es una imagen, la dirección para mostrarla.
+    imagen?: string | null;
     // Hora del mensaje (ISO), para intercalarlo con los resúmenes de la reunión.
     creado_en?: string | null;
     actividad?: string;
 };
 
-// Lo que se envía si se adjunta un documento sin escribir nada: Jarvis dice qué
-// documento es y pregunta qué hacer con él, sin resumirlo por su cuenta.
+// Lo que se envía si se adjunta un documento o una imagen sin escribir nada:
+// Jarvis dice qué es y pregunta qué hacer con él, sin resumirlo por su cuenta.
 export const MENSAJE_SOLO_DOCUMENTO = 'Te adjunto este documento.';
+export const MENSAJE_SOLO_IMAGEN = 'Te adjunto esta imagen.';
 
-// Textos que se envían solos con un documento (el de antes pedía un resumen); no se muestran.
+// Textos que se envían solos con un adjunto (el de antes pedía un resumen); no se muestran.
 const TEXTOS_SOLO_DOCUMENTO = [
     MENSAJE_SOLO_DOCUMENTO,
+    MENSAJE_SOLO_IMAGEN,
     'Resume este documento y dime sus temas centrales.',
 ];
+
+export function esImagen(archivo: File): boolean {
+    return archivo.type.startsWith('image/');
+}
 
 export function esSoloDocumento(mensaje: MensajeChat): boolean {
     return (
@@ -48,6 +60,7 @@ export const ACTIVIDADES: Record<string, string> = {
     UltimosVideosYoutube: 'Revisando YouTube…',
     ConsultarReuniones: 'Buscando en las reuniones…',
     LeerReunion: 'Leyendo el acta…',
+    ConsultarDocumentoReunion: 'Leyendo el documento de la reunión…',
     PreguntarAlChat: 'Revisando el documento y el chat…',
 };
 
@@ -116,8 +129,14 @@ export function useChat(reunionId: Ref<string | null>) {
      * pierda el texto ni el documento que el usuario preparó.
      */
     async function enviar(texto: string, documento: File | null = null) {
+        const imagen = documento !== null && esImagen(documento);
         const mensaje =
-            texto.trim() || (documento ? MENSAJE_SOLO_DOCUMENTO : '');
+            texto.trim() ||
+            (documento
+                ? imagen
+                    ? MENSAJE_SOLO_IMAGEN
+                    : MENSAJE_SOLO_DOCUMENTO
+                : '');
 
         if (!mensaje || enviando.value) {
             return false;
@@ -130,13 +149,19 @@ export function useChat(reunionId: Ref<string | null>) {
             rol: 'usuario',
             contenido: mensaje,
             documento: documento?.name,
+            // Vista previa local hasta que el historial traiga la del servidor.
+            imagen: imagen ? URL.createObjectURL(documento) : null,
             creado_en: ahora,
         });
         mensajes.value.push({
             rol: 'jarvis',
             contenido: '',
             creado_en: ahora,
-            actividad: documento ? 'Leyendo el documento…' : 'Pensando…',
+            actividad: imagen
+                ? 'Mirando la imagen…'
+                : documento
+                  ? 'Leyendo el documento…'
+                  : 'Pensando…',
         });
         // Se trabaja sobre el objeto reactivo del arreglo para que la vista se actualice.
         const respuesta = mensajes.value[mensajes.value.length - 1];

@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Files\StoredDocument;
+use Laravel\Ai\Files\StoredImage;
 use Laravel\Ai\Prompts\AgentPrompt;
 use Tests\TestCase;
 
@@ -224,6 +225,33 @@ class ChatTest extends TestCase
         $this->getJson(route('chat.mensajes', ['conversacion' => $id]))
             ->assertJsonPath('mensajes.0.documento', 'Informe anual.pdf')
             ->assertJsonPath('mensajes.2.documento', null);
+    }
+
+    public function test_an_image_is_attached_as_an_image_and_can_be_shown_in_the_chat()
+    {
+        Storage::fake('local');
+        Jarvis::fake(['Es un gráfico de tráfico.']);
+        $user = User::factory()->create();
+
+        $respuesta = $this->actingAs($user)->post(route('chat.enviar'), [
+            'mensaje' => 'Te adjunto esta imagen.',
+            'documento' => UploadedFile::fake()->image('Tráfico octubre.png', 40, 30),
+        ]);
+        $respuesta->assertOk()->streamedContent();
+        $id = $respuesta->headers->get('X-Conversacion-Id');
+
+        Jarvis::assertPrompted(fn (AgentPrompt $prompt) => $prompt->attachments->first() instanceof StoredImage
+            && $prompt->attachments->first()->name() === 'Tráfico octubre.png');
+
+        $imagen = $this->getJson(route('chat.mensajes', ['conversacion' => $id]))
+            ->assertJsonPath('mensajes.0.documento', 'Tráfico octubre.png')
+            ->json('mensajes.0.imagen');
+
+        $this->assertNotNull($imagen);
+        $this->get($imagen)->assertOk()->assertHeader('Content-Type', 'image/png');
+
+        // La imagen de un chat ajeno no se puede ver.
+        $this->actingAs(User::factory()->create())->get($imagen)->assertNotFound();
     }
 
     public function test_unsupported_documents_are_rejected_with_a_json_error()

@@ -2,6 +2,7 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\Tools\ConsultarDocumentoReunion;
 use App\Ai\Tools\ConsultarReuniones;
 use App\Ai\Tools\LeerPagina;
 use App\Ai\Tools\LeerReunion;
@@ -159,6 +160,11 @@ class Jarvis implements Agent, Conversational, HasTools
         - Videos de un canal de YouTube: usa UltimosVideosYoutube.
         - Reuniones del directorio ("¿qué acordamos el lunes?"): usa ConsultarReuniones para encontrarlas y
           LeerReunion para ver el acta. Indica de qué reunión (título y fecha) sale cada dato.
+        - Lo conversado en el chat de una reunión pasada, escrito o por voz ("¿qué te pregunté en la reunión
+          anterior?", "retomemos lo que hablamos"): LeerReunion con incluir_chat=true.
+        - Documentos de otra reunión ("revisa el PDF de la reunión anterior"): encuentra la reunión con
+          ConsultarReuniones, mira sus documentos con LeerReunion y consúltalos con ConsultarDocumentoReunion.
+          Los documentos adjuntados en este mismo chat ya los tienes a la vista: no uses la herramienta para ellos.
 
         Documentos adjuntos:
         - Si te adjuntan un documento sin pedir nada concreto ("Te adjunto este documento."), no lo resumas:
@@ -168,6 +174,10 @@ class Jarvis implements Agent, Conversational, HasTools
           sección o página cuando se pueda. Si el documento no lo dice, dilo; no lo completes con suposiciones.
         - Si el documento trae cifras o métricas, analízalas con la misma directiva anti-complacencia.
         - No uses las herramientas para un documento adjunto, salvo que pidan expresamente buscar algo afuera.
+        - Las imágenes adjuntas (capturas de pantalla, gráficos, fotos de una pizarra o de un documento) se tratan
+          igual: si llegan sin pedido concreto ("Te adjunto esta imagen."), di en una o dos frases qué muestran y
+          pregunta qué quiere hacer. Lee las cifras y textos tal como aparecen; si algo no se distingue bien, dilo
+          en vez de adivinarlo.
         TXT;
     }
 
@@ -277,6 +287,7 @@ class Jarvis implements Agent, Conversational, HasTools
             new UltimosVideosYoutube,
             new ConsultarReuniones,
             new LeerReunion,
+            new ConsultarDocumentoReunion,
         ];
     }
 }

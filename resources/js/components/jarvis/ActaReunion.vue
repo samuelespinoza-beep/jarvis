@@ -80,6 +80,25 @@ function minuto(punto: PuntoResumen): string | null {
         </section>
 
         <section
+            v-if="acta.documentos_revisados?.length"
+            class="flex flex-col gap-3"
+        >
+            <h2 class="text-base font-semibold">Documentos revisados</h2>
+            <ul class="flex flex-col gap-2">
+                <li
+                    v-for="(documento, indice) in acta.documentos_revisados"
+                    :key="indice"
+                    class="rounded-lg border px-3 py-2"
+                >
+                    <p class="font-medium break-words">
+                        {{ documento.nombre }}
+                    </p>
+                    <p class="text-foreground/80">{{ documento.aporte }}</p>
+                </li>
+            </ul>
+        </section>
+
+        <section
             v-for="seccion in [
                 {
                     titulo: 'Puntos principales',

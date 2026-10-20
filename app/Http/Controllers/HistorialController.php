@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\MensajeChatResource;
 use App\Http\Resources\ReunionResource;
 use App\Models\Resumen;
 use App\Models\Reunion;
 use App\Models\SegmentoTranscripcion;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class HistorialController extends Controller
 {
@@ -58,11 +61,31 @@ class HistorialController extends Controller
                 'modelo' => $version->modelo,
                 'generado_en' => $version->created_at?->toIso8601String(),
             ]),
+            'documentos' => array_map(fn (array $documento) => [
+                'nombre' => $documento['name'],
+                'archivo' => $documento['archivo'],
+                'imagen' => $documento['imagen'],
+            ], $reunion->documentosDelChat(soloDuranteLaReunion: false)),
+            'chat' => MensajeChatResource::collection(
+                $reunion->mensajesDelChat(soloDuranteLaReunion: false)->filter(fn ($mensaje) => trim($mensaje->content) !== ''),
+            )->resolve(),
             'segmentos' => $reunion->segmentos()->get()->map(fn (SegmentoTranscripcion $segmento) => [
                 'hablante' => $segmento->hablante,
                 'inicio_segundos' => $segmento->inicio_segundos,
                 'texto' => $segmento->texto,
             ]),
         ]);
+    }
+
+    /**
+     * Descarga un documento adjuntado al chat de la reunión, con su nombre original.
+     */
+    public function documento(Reunion $reunion, string $archivo): StreamedResponse
+    {
+        $documento = $reunion->documentoDelChat($archivo);
+
+        abort_unless($documento, 404);
+
+        return Storage::disk($documento['disk'])->download($documento['path'], $documento['name']);
     }
 }

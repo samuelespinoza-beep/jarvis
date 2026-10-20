@@ -10,6 +10,7 @@ use App\Ai\Tools\LeerReunion;
 use App\Ai\Tools\PreguntarAlChat;
 use App\Ai\Tools\UltimosVideosYoutube;
 use App\Models\Reunion;
+use App\Support\DocumentoChat;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
@@ -20,7 +21,6 @@ use Illuminate\Validation\Rule;
 use Laravel\Ai\Contracts\ConversationStore;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Enums\MessageStatus;
-use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\ObjectSchema;
@@ -147,7 +147,9 @@ class ConversacionEnVivoController extends Controller
 
     /**
      * Guarda lo conversado por voz como mensajes del chat (de la reunión o
-     * general), para verlo después y seguir escribiendo sobre eso.
+     * general), para verlo después y seguir escribiendo sobre eso. El
+     * navegador lo envía por partes mientras se habla, así que un mensaje con
+     * un ID ya guardado no se duplica: se actualiza su texto.
      */
     public function guardar(Request $request): JsonResponse
     {
@@ -158,6 +160,8 @@ class ConversacionEnVivoController extends Controller
             'mensajes.*.rol' => ['required', Rule::in(['usuario', 'jarvis'])],
             'mensajes.*.contenido' => ['required', 'string', 'max:20000'],
             'mensajes.*.creado_en' => ['nullable', 'date'],
+            // ID del mensaje, para guardar por partes sin duplicar.
+            'mensajes.*.id' => ['nullable', 'uuid'],
         ]);
 
         $usuario = $request->user();
@@ -172,29 +176,37 @@ class ConversacionEnVivoController extends Controller
         }
 
         foreach ($datos['mensajes'] as $mensaje) {
-            // A la hora en que se dijo, para que quede en orden con lo escrito mientras tanto (un documento, por ejemplo).
-            $hora = isset($mensaje['creado_en']) ? Carbon::parse($mensaje['creado_en'])->timezone(config('app.timezone'))->min(now()) : now();
+            $mensajeId = $mensaje['id'] ?? (string) Str::uuid7();
+            $existente = ConversationMessage::query()->find($mensajeId, ['id', 'conversation_id']);
 
-            if ($mensaje['rol'] === 'usuario') {
-                $mensajeId = $this->conversaciones->storeUserMessage($id, $tipo, $clave, Jarvis::class, new UserMessage($mensaje['contenido']));
-                ConversationMessage::query()->whereKey($mensajeId)->update(['created_at' => $hora, 'updated_at' => $hora]);
+            // Se guarda por partes mientras se habla: lo ya guardado solo se actualiza.
+            if ($existente) {
+                if ($existente->conversation_id === $id) {
+                    ConversationMessage::query()->whereKey($mensajeId)->update([
+                        'content' => $mensaje['contenido'],
+                        'updated_at' => now(),
+                    ]);
+                }
 
                 continue;
             }
 
-            // Igual que guarda el SDK las respuestas del chat, pero sin pasos de herramientas.
+            // A la hora en que se dijo, para que quede en orden con lo escrito mientras tanto (un documento, por ejemplo).
+            $hora = isset($mensaje['creado_en']) ? Carbon::parse($mensaje['creado_en'])->timezone(config('app.timezone'))->min(now()) : now();
+
+            // Igual que guarda el SDK los mensajes del chat, pero sin pasos de herramientas.
             ConversationMessage::query()->insert([
-                'id' => (string) Str::uuid7(),
+                'id' => $mensajeId,
                 'conversation_id' => $id,
                 'participant_type' => $tipo,
                 'participant_id' => $clave,
                 'agent' => Jarvis::class,
-                'role' => 'assistant',
+                'role' => $mensaje['rol'] === 'usuario' ? 'user' : 'assistant',
                 'content' => $mensaje['contenido'],
                 'attachments' => '[]',
                 'steps' => '[]',
                 'usage' => '[]',
-                'meta' => '[]',
+                'meta' => json_encode(['en_vivo' => true]),
                 'status' => MessageStatus::Completed->value,
                 'created_at' => $hora,
                 'updated_at' => $hora,
@@ -257,9 +269,9 @@ class ConversacionEnVivoController extends Controller
 
         // Del más reciente hacia atrás, hasta llenar el espacio.
         foreach ($mensajes as $mensaje) {
-            $documento = collect($mensaje->attachments)->firstWhere('type', 'stored-document')['name'] ?? null;
+            $adjunto = DocumentoChat::delMensaje($mensaje->attachments);
             $quien = $mensaje->role === 'user'
-                ? 'Usuario'.($documento ? " (adjuntó el documento «{$documento}»)" : '')
+                ? 'Usuario'.($adjunto ? ' (adjuntó '.DocumentoChat::describir($adjunto).')' : '')
                 : 'Asistente';
             $linea = "{$quien}: ".Str::limit(trim($mensaje->content), 1500);
 

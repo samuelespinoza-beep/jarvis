@@ -292,8 +292,9 @@ function ejecutarOrden(orden: OrdenVoz) {
 
 const ordenesVoz = useOrdenesDeVoz(ejecutarOrden);
 
-// Conversación por voz en vivo desde el chat: mientras dura, la reunión se
-// pausa (para que no quede en el acta) y se reanuda al terminar.
+// Conversación por voz en vivo desde el chat: mientras se habla con la voz, la
+// reunión se pausa (para que su voz no se grabe) y se reanuda al terminar o al
+// silenciar la voz, que queda abierta en espera.
 const conversandoEnVivo = ref(false);
 let reanudarAlTerminarEnVivo = false;
 
@@ -305,6 +306,14 @@ async function pausarParaEnVivo() {
         reanudarAlTerminarEnVivo = true;
         toast('Reunión en pausa mientras conversas con el Asistente IA.');
         await pausar();
+    }
+}
+
+async function reanudarEnSilencio() {
+    if (reanudarAlTerminarEnVivo && estado.value === 'pausado') {
+        reanudarAlTerminarEnVivo = false;
+        toast('Voz en espera: la reunión sigue grabando.');
+        await reanudar();
     }
 }
 
@@ -596,6 +605,7 @@ watch(
                     :voces="voces"
                     @salir-de-reunion="reunionDelChat = null"
                     :preparar-en-vivo="pausarParaEnVivo"
+                    :reanudar-en-silencio="reanudarEnSilencio"
                     @en-vivo="alCambiarEnVivo"
                 />
 
@@ -612,6 +622,7 @@ watch(
                         <PreparacionReunion
                             v-model:agenda="agenda"
                             :en-curso="false"
+                            :documentos="documentos"
                         />
                         <hr class="border-hud-acento/20" />
                     </template>
@@ -667,6 +678,7 @@ watch(
                         <PreparacionReunion
                             v-model:agenda="agenda"
                             :en-curso="true"
+                            :documentos="documentos"
                         />
 
                         <p

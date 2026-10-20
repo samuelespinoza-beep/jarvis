@@ -3,13 +3,15 @@
 namespace App\Console\Commands;
 
 use App\Http\Middleware\SesionEscritorio;
+use App\Services\ReunionDeEjemplo;
 use Illuminate\Console\Command;
 use Illuminate\Encryption\Encrypter;
 
 /**
  * Deja lista la versión instalada en una PC: crea el .env desde la plantilla,
  * genera la llave de la app, guarda la llave de OpenAI, crea la base de datos
- * y el usuario local. Se puede repetir (al actualizar) sin perder datos.
+ * y el usuario local, y la primera vez carga la reunión de ejemplo. Se puede
+ * repetir (al actualizar) sin perder datos.
  */
 class InstalarJarvis extends Command
 {
@@ -63,7 +65,12 @@ class InstalarJarvis extends Command
         }
 
         $this->call('migrate', ['--force' => true]);
-        SesionEscritorio::usuarioLocal();
+        $usuario = SesionEscritorio::usuarioLocal();
+
+        // La primera vez, para no empezar sin ninguna reunión.
+        if ($ejemplo = app(ReunionDeEjemplo::class)->importarSiEstaVacia($usuario)) {
+            $this->info("Se cargó la reunión de ejemplo «{$ejemplo->titulo}».");
+        }
 
         if ($this->valor($env, 'OPENAI_API_KEY') === '') {
             $this->warn('Falta la llave de OpenAI: Jarvis no podrá transcribir ni responder hasta que se configure.');

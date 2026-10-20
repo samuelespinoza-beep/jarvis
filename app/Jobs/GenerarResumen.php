@@ -6,6 +6,7 @@ use App\Ai\Agents\ResumidorReunion;
 use App\Enums\EstadoReunion;
 use App\Models\Reunion;
 use App\Services\EspejoReunion;
+use App\Support\DocumentoChat;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Attributes\Backoff;
@@ -30,15 +31,26 @@ class GenerarResumen implements ShouldQueue
     {
         $reunion = $this->reunion;
         $transcripcion = $reunion->transcripcionComoTexto();
+        $chat = $reunion->chatComoTexto();
+        $documentos = $reunion->documentosDelChat();
         $modelo = config('jarvis.resumen.modelo');
 
-        if (trim($transcripcion) === '') {
-            // Audio sin voz: no tiene sentido pagar una llamada a la IA.
+        if (trim($transcripcion) === '' && trim($chat) === '' && ! $documentos) {
+            // Sin voz ni chat: no tiene sentido pagar una llamada a la IA.
             $contenido = $this->resumenVacio($reunion);
             $modelo = 'ninguno';
             $tokens = 0;
         } else {
-            $respuesta = (new ResumidorReunion)->prompt($this->prompt($reunion, $transcripcion), model: $modelo);
+            $adjuntos = array_map(
+                fn (array $documento) => DocumentoChat::adjunto($documento['path'], $documento['name'], $documento['disk']),
+                $documentos,
+            );
+
+            $respuesta = (new ResumidorReunion)->prompt(
+                $this->prompt($reunion, $transcripcion, $chat, $documentos),
+                attachments: $adjuntos,
+                model: $modelo,
+            );
             $contenido = $respuesta->toArray();
             $tokens = $respuesta->usage->inputTokens + $respuesta->usage->outputTokens;
         }
@@ -81,7 +93,10 @@ class GenerarResumen implements ShouldQueue
             ->update(['estado' => EstadoReunion::Error]);
     }
 
-    private function prompt(Reunion $reunion, string $transcripcion): string
+    /**
+     * @param  list<array{name: string, archivo: string, path: string, disk: string, imagen: bool}>  $documentos
+     */
+    private function prompt(Reunion $reunion, string $transcripcion, string $chat, array $documentos): string
     {
         $duracion = intdiv((int) $reunion->duracion_segundos, 60);
 
@@ -94,7 +109,13 @@ class GenerarResumen implements ShouldQueue
                 : 'La reunión no tenía agenda.',
             '',
             'Transcripción:',
-            $transcripcion,
+            trim($transcripcion) !== '' ? $transcripcion : 'No se detectó conversación en el audio.',
+            '',
+            'Chat de la reunión (escrito o por voz con el Asistente IA):',
+            trim($chat) !== '' ? $chat : 'No se usó el chat durante la reunión.',
+            $documentos
+                ? "\nDocumentos e imágenes adjuntos en el chat (van como archivos):\n".implode("\n", array_map(fn (array $documento) => "- {$documento['name']}", $documentos))
+                : null,
         ], fn (?string $linea) => $linea !== null));
     }
 
@@ -113,6 +134,7 @@ class GenerarResumen implements ShouldQueue
             'pendientes' => [],
             'riesgos_o_puntos_criticos' => [],
             'sugerencias_de_mejora' => ['Verificar que el micrófono capte la sala antes de iniciar la reunión.'],
+            'documentos_revisados' => [],
             'agenda' => array_map(
                 fn (string $punto) => ['punto' => $punto, 'estado' => 'no_tratado', 'comentario' => 'No se detectó conversación.'],
                 $reunion->agenda ?? [],

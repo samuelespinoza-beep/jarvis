@@ -1,5 +1,9 @@
 export type EstadoReunion =
-    'grabando' | 'pausada' | 'procesando' | 'completada' | 'error';
+    | 'grabando'
+    | 'pausada'
+    | 'procesando'
+    | 'completada'
+    | 'error';
 
 export type Reunion = {
     id: string;
@@ -17,7 +21,10 @@ export type Reunion = {
 };
 
 export type EstadoFragmento =
-    'pendiente' | 'transcribiendo' | 'listo' | 'error';
+    | 'pendiente'
+    | 'transcribiendo'
+    | 'listo'
+    | 'error';
 
 export type FragmentoProcesado = {
     orden: number;
@@ -71,6 +78,13 @@ export type ContenidoResumen = {
     sugerencias_de_mejora: string[];
     // Las actas anteriores a la agenda no lo tienen.
     agenda?: PuntoAgendaActa[];
+    // Las actas anteriores a incluir el chat no lo tienen.
+    documentos_revisados?: DocumentoRevisado[];
+};
+
+export type DocumentoRevisado = {
+    nombre: string;
+    aporte: string;
 };
 
 export type PuntoAgendaActa = {
