@@ -7,11 +7,13 @@ use App\Ai\Tools\BuscarEnInternet;
 use App\Ai\Tools\ConsultarReuniones;
 use App\Ai\Tools\LeerPagina;
 use App\Ai\Tools\LeerReunion;
+use App\Ai\Tools\PreguntarAlChat;
 use App\Ai\Tools\UltimosVideosYoutube;
 use App\Models\Reunion;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -37,6 +39,7 @@ class ConversacionEnVivoController extends Controller
     /**
      * Herramientas que el modelo de voz puede pedir. Las mismas del chat; la
      * búsqueda web va por BuscarEnInternet porque en tiempo real no existe.
+     * Además está PreguntarAlChat, que necesita saber de qué chat se trata.
      *
      * @var list<class-string<Tool>>
      */
@@ -47,6 +50,11 @@ class ConversacionEnVivoController extends Controller
         ConsultarReuniones::class,
         LeerReunion::class,
     ];
+
+    // Historial del chat que recibe la voz al empezar: mensajes y caracteres como máximo.
+    private const HISTORIAL_MENSAJES = 20;
+
+    private const HISTORIAL_CARACTERES = 12000;
 
     public function __construct(private ConversationStore $conversaciones) {}
 
@@ -59,10 +67,12 @@ class ConversacionEnVivoController extends Controller
         $datos = $request->validate([
             'voz' => ['nullable', 'string', Rule::in(array_keys(config('jarvis.voz.voces')))],
             'reunion_id' => ['nullable', 'string', Rule::exists('reuniones', 'id')],
+            'conversacion_id' => ['nullable', 'string', 'max:36'],
         ]);
 
         $config = config('jarvis.conversacion');
         $reunion = isset($datos['reunion_id']) ? Reunion::query()->find($datos['reunion_id']) : null;
+        $conversacionId = $this->conversacionDelChat($request, $reunion, $datos['conversacion_id'] ?? null);
         $voz = $datos['voz'] ?? config('jarvis.voz.voz');
         $voz = $config['voces_equivalentes'][$voz] ?? $voz;
 
@@ -75,20 +85,19 @@ class ConversacionEnVivoController extends Controller
                     'session' => [
                         'type' => 'realtime',
                         'model' => $config['modelo'],
-                        'instructions' => $this->instrucciones($reunion),
+                        'instructions' => $this->instrucciones($reunion).$this->historial($conversacionId),
                         'audio' => [
                             'input' => [
-                                'noise_reduction' => ['type' => 'near_field'],
+                                'noise_reduction' => ['type' => $config['microfono']],
                                 'transcription' => [
                                     'model' => config('jarvis.en_vivo.modelo'),
                                     'language' => config('jarvis.transcripcion.idioma'),
                                 ],
-                                // Detecta cuándo el usuario terminó de hablar por el sentido de la frase, no solo por el silencio.
-                                'turn_detection' => ['type' => 'semantic_vad'],
+                                'turn_detection' => $this->deteccionDeTurnos($config['deteccion']),
                             ],
                             'output' => ['voice' => $voz],
                         ],
-                        'tools' => array_map($this->definicion(...), $this->herramientas()),
+                        'tools' => array_map($this->definicion(...), $this->herramientas($reunion, $conversacionId)),
                     ],
                 ])
                 ->throw();
@@ -102,6 +111,7 @@ class ConversacionEnVivoController extends Controller
             'llave' => $respuesta->json('value'),
             'voz' => $voz,
             'minutos_inactividad' => $config['minutos_inactividad'],
+            'interrumpir' => $config['deteccion']['interrumpir'],
         ]);
     }
 
@@ -113,9 +123,14 @@ class ConversacionEnVivoController extends Controller
         $datos = $request->validate([
             'nombre' => ['required', 'string', 'max:100'],
             'argumentos' => ['nullable', 'array'],
+            'reunion_id' => ['nullable', 'string', Rule::exists('reuniones', 'id')],
+            'conversacion_id' => ['nullable', 'string', 'max:36'],
         ]);
 
-        $herramienta = collect($this->herramientas())
+        $reunion = isset($datos['reunion_id']) ? Reunion::query()->find($datos['reunion_id']) : null;
+        $conversacionId = $this->conversacionDelChat($request, $reunion, $datos['conversacion_id'] ?? null);
+
+        $herramienta = collect($this->herramientas($reunion, $conversacionId))
             ->first(fn (Tool $herramienta) => ToolNameResolver::resolve($herramienta) === $datos['nombre']);
 
         abort_unless($herramienta, 404, 'Herramienta desconocida.');
@@ -142,17 +157,14 @@ class ConversacionEnVivoController extends Controller
             'mensajes' => ['required', 'array', 'min:1', 'max:300'],
             'mensajes.*.rol' => ['required', Rule::in(['usuario', 'jarvis'])],
             'mensajes.*.contenido' => ['required', 'string', 'max:20000'],
+            'mensajes.*.creado_en' => ['nullable', 'date'],
         ]);
 
         $usuario = $request->user();
         $tipo = Conversation::participantType($usuario);
         $clave = Conversation::participantKey($usuario);
         $reunion = isset($datos['reunion_id']) ? Reunion::query()->find($datos['reunion_id']) : null;
-        $id = $reunion ? $reunion->conversacion_id : ($datos['conversacion_id'] ?? null);
-
-        if ($id && ! $reunion) {
-            abort_unless($this->conversaciones->conversationBelongsTo($id, $tipo, $clave), 404);
-        }
+        $id = $this->conversacionDelChat($request, $reunion, $datos['conversacion_id'] ?? null);
 
         if (! $id) {
             $id = $this->conversaciones->storeConversation($tipo, $clave, 'Conversación por voz');
@@ -160,8 +172,12 @@ class ConversacionEnVivoController extends Controller
         }
 
         foreach ($datos['mensajes'] as $mensaje) {
+            // A la hora en que se dijo, para que quede en orden con lo escrito mientras tanto (un documento, por ejemplo).
+            $hora = isset($mensaje['creado_en']) ? Carbon::parse($mensaje['creado_en'])->timezone(config('app.timezone'))->min(now()) : now();
+
             if ($mensaje['rol'] === 'usuario') {
-                $this->conversaciones->storeUserMessage($id, $tipo, $clave, Jarvis::class, new UserMessage($mensaje['contenido']));
+                $mensajeId = $this->conversaciones->storeUserMessage($id, $tipo, $clave, Jarvis::class, new UserMessage($mensaje['contenido']));
+                ConversationMessage::query()->whereKey($mensajeId)->update(['created_at' => $hora, 'updated_at' => $hora]);
 
                 continue;
             }
@@ -180,8 +196,8 @@ class ConversacionEnVivoController extends Controller
                 'usage' => '[]',
                 'meta' => '[]',
                 'status' => MessageStatus::Completed->value,
-                'created_at' => now(),
-                'updated_at' => now(),
+                'created_at' => $hora,
+                'updated_at' => $hora,
             ]);
         }
 
@@ -196,23 +212,127 @@ class ConversacionEnVivoController extends Controller
      */
     private function instrucciones(?Reunion $reunion): string
     {
-        return (new Jarvis($reunion))->instructions().<<<'TXT'
+        return (new Jarvis($reunion))->instruccionesComunes().<<<'TXT'
 
         Conversación por voz en vivo (ahora mismo):
         - Estás hablando por voz con el usuario. Responde como en una conversación: breve (1 a 3 frases,
           salvo que pidan detalle), sin Markdown, listas, símbolos ni direcciones web.
+        - Ante una decisión, di primero tu postura en una frase y el dato más importante que te falta;
+          ofrece desarrollar el análisis en vez de soltarlo completo. La directiva anti-complacencia aplica
+          igual: hablar breve no es dar la razón.
         - Para buscar en internet usa BuscarEnInternet. Antes de usar una herramienta, avisa en pocas
           palabras ("Un momento, lo reviso").
         - Si hay enlaces, menciona solo el nombre del sitio: lo conversado queda escrito en el chat.
+        - El chat escrito sigue abierto mientras conversan. Si el usuario quiere mandarte un documento,
+          dile que lo adjunte con el clip de la caja de texto y lo envíe; tú lo esperas.
+        - Cuando escribe o adjunta algo, primero te llega un aviso de que el chat escrito está respondiendo:
+          espera esa respuesta sin adelantarte. Luego te llega lo que respondió: es tu respuesta, ya escrita en
+          pantalla. Dila en voz alta con naturalidad, sin decir que viene del chat.
+        - Para detalles de un documento (cifras, fechas, cláusulas) o de lo escrito en el chat, usa
+          PreguntarAlChat: el chat escrito tiene los documentos completos. No inventes lo que no sepas.
         TXT;
+    }
+
+    /**
+     * Lo último del chat (escrito o por voz, con los resúmenes de documentos),
+     * para que la voz siga la conversación en vez de empezar sin memoria.
+     */
+    private function historial(?string $conversacionId): string
+    {
+        if (! $conversacionId) {
+            return '';
+        }
+
+        $mensajes = ConversationMessage::query()
+            ->where('conversation_id', $conversacionId)
+            ->whereIn('role', ['user', 'assistant'])
+            ->where('content', '!=', '')
+            ->latest()
+            ->orderByDesc('id')
+            ->limit(self::HISTORIAL_MENSAJES)
+            ->get(['role', 'content', 'attachments']);
+
+        $lineas = [];
+        $caracteres = 0;
+
+        // Del más reciente hacia atrás, hasta llenar el espacio.
+        foreach ($mensajes as $mensaje) {
+            $documento = collect($mensaje->attachments)->firstWhere('type', 'stored-document')['name'] ?? null;
+            $quien = $mensaje->role === 'user'
+                ? 'Usuario'.($documento ? " (adjuntó el documento «{$documento}»)" : '')
+                : 'Asistente';
+            $linea = "{$quien}: ".Str::limit(trim($mensaje->content), 1500);
+
+            if ($caracteres + mb_strlen($linea) > self::HISTORIAL_CARACTERES) {
+                break;
+            }
+
+            $caracteres += mb_strlen($linea);
+            array_unshift($lineas, $linea);
+        }
+
+        if (! $lineas) {
+            return '';
+        }
+
+        return "\n\nLo conversado antes en este chat, del más antiguo al más reciente (continúa desde ahí):\n"
+            .implode("\n", $lineas);
+    }
+
+    /**
+     * El chat al que pertenece la voz: el de la reunión o, en el chat general,
+     * el que diga el navegador si es del usuario.
+     */
+    private function conversacionDelChat(Request $request, ?Reunion $reunion, ?string $id): ?string
+    {
+        if ($reunion) {
+            return $reunion->conversacion_id;
+        }
+
+        if ($id) {
+            $usuario = $request->user();
+            abort_unless($this->conversaciones->conversationBelongsTo(
+                $id, Conversation::participantType($usuario), Conversation::participantKey($usuario),
+            ), 404);
+        }
+
+        return $id;
+    }
+
+    /**
+     * Cuándo cuenta como que el usuario habló. Con server_vad, el umbral deja
+     * fuera golpes, eco del parlante y ruido de fondo; semantic_vad decide por
+     * el sentido de la frase, pero se dispara con cualquier sonido.
+     *
+     * @param  array{tipo: string, umbral: float, relleno_ms: int, silencio_ms: int, interrumpir: bool}  $deteccion
+     * @return array<string, mixed>
+     */
+    private function deteccionDeTurnos(array $deteccion): array
+    {
+        $comun = ['interrupt_response' => $deteccion['interrumpir'], 'create_response' => true];
+
+        if ($deteccion['tipo'] === 'semantic_vad') {
+            return ['type' => 'semantic_vad', 'eagerness' => 'low', ...$comun];
+        }
+
+        return [
+            'type' => 'server_vad',
+            'threshold' => $deteccion['umbral'],
+            'prefix_padding_ms' => $deteccion['relleno_ms'],
+            'silence_duration_ms' => $deteccion['silencio_ms'],
+            ...$comun,
+        ];
     }
 
     /**
      * @return list<Tool>
      */
-    private function herramientas(): array
+    private function herramientas(?Reunion $reunion, ?string $conversacionId): array
     {
-        return array_map(fn (string $clase) => app($clase), self::HERRAMIENTAS);
+        return [
+            ...array_map(fn (string $clase) => app($clase), self::HERRAMIENTAS),
+            new PreguntarAlChat($reunion, $conversacionId),
+        ];
     }
 
     /**

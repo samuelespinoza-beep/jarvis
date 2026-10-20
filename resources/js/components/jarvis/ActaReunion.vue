@@ -1,9 +1,27 @@
 <script setup lang="ts">
-import type { ContenidoResumen, PuntoResumen } from '@/types';
+import type { ContenidoResumen, PuntoAgendaActa, PuntoResumen } from '@/types';
 
 defineProps<{
     acta: ContenidoResumen;
 }>();
+
+const ESTADOS_AGENDA: Record<
+    PuntoAgendaActa['estado'],
+    { texto: string; clase: string }
+> = {
+    tratado: {
+        texto: 'Tratado',
+        clase: 'border-emerald-300 bg-emerald-50 text-emerald-700',
+    },
+    parcial: {
+        texto: 'Parcial',
+        clase: 'border-amber-300 bg-amber-50 text-amber-700',
+    },
+    no_tratado: {
+        texto: 'No tratado',
+        clase: 'border-rose-300 bg-rose-50 text-rose-700',
+    },
+};
 
 function minuto(punto: PuntoResumen): string | null {
     return punto.minuto_aprox === null ? null : `min ${punto.minuto_aprox}`;
@@ -28,6 +46,37 @@ function minuto(punto: PuntoResumen): string | null {
                     {{ tema }}
                 </li>
             </ul>
+        </section>
+
+        <section v-if="acta.agenda?.length" class="flex flex-col gap-3">
+            <h2 class="text-base font-semibold">Agenda</h2>
+            <ol class="flex flex-col gap-2">
+                <li
+                    v-for="(item, indice) in acta.agenda"
+                    :key="indice"
+                    class="flex gap-3 rounded-lg border px-3 py-2"
+                >
+                    <span
+                        class="mt-0.5 font-mono text-xs text-muted-foreground"
+                    >
+                        {{ indice + 1 }}.
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p
+                            class="flex flex-wrap items-center gap-2 font-medium"
+                        >
+                            {{ item.punto }}
+                            <span
+                                class="rounded-full border px-2 py-0.5 text-[11px] font-normal"
+                                :class="ESTADOS_AGENDA[item.estado].clase"
+                            >
+                                {{ ESTADOS_AGENDA[item.estado].texto }}
+                            </span>
+                        </p>
+                        <p class="text-foreground/80">{{ item.comentario }}</p>
+                    </div>
+                </li>
+            </ol>
         </section>
 
         <section

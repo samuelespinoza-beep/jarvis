@@ -1,13 +1,11 @@
 export type EstadoReunion =
-    | 'grabando'
-    | 'pausada'
-    | 'procesando'
-    | 'completada'
-    | 'error';
+    'grabando' | 'pausada' | 'procesando' | 'completada' | 'error';
 
 export type Reunion = {
     id: string;
     titulo: string | null;
+    // Puntos a tratar, en orden.
+    agenda: string[];
     estado: EstadoReunion;
     iniciada_en: string;
     pausada_en: string | null;
@@ -19,10 +17,7 @@ export type Reunion = {
 };
 
 export type EstadoFragmento =
-    | 'pendiente'
-    | 'transcribiendo'
-    | 'listo'
-    | 'error';
+    'pendiente' | 'transcribiendo' | 'listo' | 'error';
 
 export type FragmentoProcesado = {
     orden: number;
@@ -74,6 +69,34 @@ export type ContenidoResumen = {
     pendientes: string[];
     riesgos_o_puntos_criticos: string[];
     sugerencias_de_mejora: string[];
+    // Las actas anteriores a la agenda no lo tienen.
+    agenda?: PuntoAgendaActa[];
+};
+
+export type PuntoAgendaActa = {
+    punto: string;
+    estado: 'tratado' | 'parcial' | 'no_tratado';
+    comentario: string;
+};
+
+export type InformePrevio = {
+    generado_en: string;
+    reuniones: { id: string; titulo: string; fecha: string }[];
+    informe: {
+        resumen: string;
+        compromisos: {
+            descripcion: string;
+            responsable: string | null;
+            fecha_limite: string | null;
+            fecha_iso: string | null;
+            reunion: string;
+            vencido: boolean;
+        }[];
+        retomar: { tema: string; motivo: string; reunion: string }[];
+        alertas: string[];
+        sugerencias_agenda: string[];
+        antecedentes_agenda: { punto: string; antecedentes: string }[];
+    } | null;
 };
 
 export type TramoReunion = {

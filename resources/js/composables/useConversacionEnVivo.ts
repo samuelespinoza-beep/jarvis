@@ -30,14 +30,20 @@ type EventoRealtime = {
     call_id?: string;
     name?: string;
     arguments?: string;
+    response_id?: string;
+    response?: { id?: string; metadata?: Record<string, string> | null };
     error?: { message?: string };
 };
 
 type Opciones = {
     voz: string;
     reunionId: string | null;
-    conversacionId: string | null;
+    // Se lee cada vez: el chat puede crear su conversación en medio de la voz (al adjuntar un documento).
+    conversacionId: () => string | null;
 };
+
+// Lo que se le pasa a la voz de una respuesta escrita (el resumen de un documento, por ejemplo).
+const MAX_CARACTERES_RESPUESTA = 6000;
 
 const URL_LLAMADAS = 'https://api.openai.com/v1/realtime/calls';
 
@@ -59,6 +65,14 @@ export function useConversacionEnVivo(
     const actividad = ref<string | null>(null);
     const mensajes = ref<MensajeEnVivo[]>([]);
     const error = ref<string | null>(null);
+    // Micrófono silenciado: la voz sigue conectada, pero no escucha al usuario.
+    const silenciado = ref(false);
+    // Si se le puede interrumpir hablando. Si no, el micrófono se cierra
+    // mientras habla: así su propia voz (el eco de los parlantes) no vuelve a
+    // entrar como si la hubiera dicho el usuario.
+    const interrumpible = ref(true);
+    let vozSonando = false;
+    let finDeVoz: number | undefined;
 
     let conexion: RTCPeerConnection | null = null;
     let canal: RTCDataChannel | null = null;
@@ -66,6 +80,16 @@ export function useConversacionEnVivo(
     let parlante: HTMLAudioElement | null = null;
     let opciones: Opciones | null = null;
     let herramientasPendientes = 0;
+    // Pedir una respuesta mientras hay otra en curso da error: se espera a que termine.
+    let respuestaEnCurso = false;
+    let respuestaPendiente = false;
+    let relevoPendiente = false;
+    // La respuesta en la que la voz dice lo que ya respondió el chat escrito:
+    // se escucha, pero no se agrega otro mensaje (la respuesta ya está escrita).
+    let respuestaRelevo: string | null = null;
+    // Lo que la voz está diciendo en la respuesta en curso, y lo que se descartó por quedar viejo.
+    const itemsDeLaRespuesta = new Set<string>();
+    const descartados = new Set<string>();
     let ultimaActividad = 0;
     let minutosInactividad = 3;
     let vigilante: number | undefined;
@@ -88,10 +112,114 @@ export function useConversacionEnVivo(
         return existente;
     }
 
+    function quitarMensaje(id: string) {
+        mensajes.value = mensajes.value.filter((m) => m.id !== id);
+    }
+
+    function esRelevo(evento: EventoRealtime): boolean {
+        return (
+            respuestaRelevo !== null && evento.response_id === respuestaRelevo
+        );
+    }
+
     function enviar(evento: object) {
         if (canal?.readyState === 'open') {
             canal.send(JSON.stringify(evento));
         }
+    }
+
+    function pedirRespuesta(relevo = false) {
+        if (respuestaEnCurso) {
+            respuestaPendiente = true;
+            relevoPendiente ||= relevo;
+
+            return;
+        }
+
+        respuestaEnCurso = true;
+        enviar(
+            relevo
+                ? {
+                      type: 'response.create',
+                      response: { metadata: { relevo: 'si' } },
+                  }
+                : { type: 'response.create' },
+        );
+    }
+
+    function queHizo(texto: string, documento: string | null): string {
+        return documento
+            ? `adjuntó el documento «${documento}»${texto ? ` con el mensaje «${texto}»` : ''}`
+            : `escribió: «${texto}»`;
+    }
+
+    function avisar(texto: string) {
+        enviar({
+            type: 'conversation.item.create',
+            item: {
+                type: 'message',
+                role: 'user',
+                content: [{ type: 'input_text', text: texto }],
+            },
+        });
+    }
+
+    /**
+     * Al enviar algo por el chat: si la voz estaba respondiendo, eso quedó
+     * viejo (por ejemplo, "envíame el PDF" cuando ya se envió), así que se
+     * corta y se quita. La voz sabe que el chat está respondiendo y espera.
+     */
+    function avisarEnvioEscrito(texto: string, documento: string | null) {
+        if (canal?.readyState !== 'open') {
+            return;
+        }
+
+        ultimaActividad = Date.now();
+
+        if (
+            respuestaEnCurso &&
+            itemsDeLaRespuesta.size &&
+            herramientasPendientes === 0
+        ) {
+            enviar({ type: 'response.cancel' });
+            enviar({ type: 'output_audio_buffer.clear' });
+            itemsDeLaRespuesta.forEach((id) => {
+                descartados.add(id);
+                quitarMensaje(id);
+            });
+            itemsDeLaRespuesta.clear();
+        }
+
+        avisar(
+            `[Aviso del chat, no dicho en voz] El usuario ${queHizo(texto, documento)}. ` +
+                'El chat escrito le está respondiendo en pantalla; en unos segundos te llega su respuesta. ' +
+                'Si te habla mientras tanto, dile que lo estás revisando.',
+        );
+    }
+
+    /**
+     * Le cuenta a la voz lo que el usuario escribió o adjuntó en el chat y lo
+     * que respondió el chat escrito (que lee los documentos completos), para
+     * que lo comente sin cortar la conversación.
+     */
+    function contarMensajeEscrito(
+        texto: string,
+        documento: string | null,
+        respuesta: string,
+    ) {
+        if (canal?.readyState !== 'open') {
+            return;
+        }
+
+        ultimaActividad = Date.now();
+        avisar(
+            `[Aviso del chat, no dicho en voz] Esta es tu respuesta a lo que el usuario ${queHizo(texto, documento)}; ` +
+                'ya está escrita en pantalla. Dísela ahora en voz alta, con las mismas ideas y en el mismo orden, ' +
+                'de forma natural: sin leer símbolos, negritas ni enlaces. Si es larga, di lo principal y avisa que ' +
+                'el resto está en pantalla. No digas que viene del chat ni que la revisaste: es tu propia respuesta.\n\n' +
+                respuesta.slice(0, MAX_CARACTERES_RESPUESTA),
+        );
+        pedirRespuesta(true);
     }
 
     async function usarHerramienta(evento: EventoRealtime) {
@@ -108,6 +236,8 @@ export function useConversacionEnVivo(
                 data: {
                     nombre: evento.name,
                     argumentos: JSON.parse(evento.arguments || '{}'),
+                    reunion_id: opciones?.reunionId,
+                    conversacion_id: opciones?.conversacionId(),
                 },
                 headers: { Accept: 'application/json' },
             });
@@ -133,7 +263,7 @@ export function useConversacionEnVivo(
         // Con todos los resultados listos, el modelo sigue hablando.
         if (herramientasPendientes === 0) {
             actividad.value = null;
-            enviar({ type: 'response.create' });
+            pedirRespuesta();
         }
     }
 
@@ -164,25 +294,63 @@ export function useConversacionEnVivo(
                 break;
             case 'conversation.item.input_audio_transcription.completed':
                 if (evento.item_id) {
-                    mensaje(evento.item_id, 'usuario').contenido = (
-                        evento.transcript ?? ''
-                    ).trim();
+                    const texto = (evento.transcript ?? '').trim();
+
+                    // Un golpe o eco que no resultó en palabras no queda como mensaje.
+                    if (texto) {
+                        mensaje(evento.item_id, 'usuario').contenido = texto;
+                    } else {
+                        quitarMensaje(evento.item_id);
+                    }
                 }
 
                 break;
             case 'response.output_audio_transcript.delta':
             case 'response.audio_transcript.delta':
-                if (evento.item_id) {
-                    mensaje(evento.item_id, 'jarvis').contenido +=
-                        evento.delta ?? '';
+                if (evento.item_id && !descartados.has(evento.item_id)) {
+                    itemsDeLaRespuesta.add(evento.item_id);
+
+                    if (!esRelevo(evento)) {
+                        mensaje(evento.item_id, 'jarvis').contenido +=
+                            evento.delta ?? '';
+                    }
                 }
 
                 break;
             case 'response.output_audio_transcript.done':
             case 'response.audio_transcript.done':
-                if (evento.item_id && evento.transcript) {
+                if (
+                    evento.item_id &&
+                    evento.transcript &&
+                    !descartados.has(evento.item_id) &&
+                    !esRelevo(evento)
+                ) {
                     mensaje(evento.item_id, 'jarvis').contenido =
                         evento.transcript.trim();
+                }
+
+                break;
+            case 'response.created':
+                respuestaEnCurso = true;
+
+                if (evento.response?.metadata?.relevo && evento.response.id) {
+                    respuestaRelevo = evento.response.id;
+                }
+
+                break;
+            case 'response.done':
+                respuestaEnCurso = false;
+                itemsDeLaRespuesta.clear();
+
+                if (evento.response?.id === respuestaRelevo) {
+                    respuestaRelevo = null;
+                }
+
+                if (respuestaPendiente) {
+                    const relevo = relevoPendiente;
+                    respuestaPendiente = false;
+                    relevoPendiente = false;
+                    pedirRespuesta(relevo);
                 }
 
                 break;
@@ -191,6 +359,9 @@ export function useConversacionEnVivo(
                 break;
             case 'output_audio_buffer.started':
                 estado.value = 'hablando';
+                window.clearTimeout(finDeVoz);
+                vozSonando = true;
+                aplicarMicrofono();
                 break;
             case 'output_audio_buffer.stopped':
             case 'output_audio_buffer.cleared':
@@ -198,6 +369,12 @@ export function useConversacionEnVivo(
                     estado.value = 'escuchando';
                 }
 
+                // Se espera un poco: la sala sigue sonando un instante después de que calla.
+                window.clearTimeout(finDeVoz);
+                finDeVoz = window.setTimeout(() => {
+                    vozSonando = false;
+                    aplicarMicrofono();
+                }, 400);
                 break;
             case 'error':
                 error.value =
@@ -207,8 +384,49 @@ export function useConversacionEnVivo(
         }
     }
 
+    /**
+     * Abre el micrófono con cancelación de eco. Si otra parte de la página
+     * todavía tiene el micrófono abierto sin ella (la grabación de la reunión
+     * mientras se pausa), el navegador puede entregarlo sin cancelación de
+     * eco: en ese caso se suelta y se vuelve a pedir.
+     */
+    async function abrirMicrofono(): Promise<MediaStream> {
+        const restricciones = {
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+            },
+        };
+
+        for (let intento = 0; ; intento++) {
+            const flujo =
+                await navigator.mediaDevices.getUserMedia(restricciones);
+            const ajustes = flujo.getAudioTracks()[0]?.getSettings();
+
+            if (ajustes?.echoCancellation !== false || intento >= 2) {
+                return flujo;
+            }
+
+            flujo.getTracks().forEach((pista) => pista.stop());
+            await new Promise((listo) => window.setTimeout(listo, 400));
+        }
+    }
+
+    // El micrófono escucha salvo que esté silenciado o, sin interrupciones, mientras habla.
+    function aplicarMicrofono() {
+        const pista = microfono?.getAudioTracks()[0];
+
+        if (pista) {
+            pista.enabled =
+                !silenciado.value && (interrumpible.value || !vozSonando);
+        }
+    }
+
     function cerrarConexion() {
         window.clearInterval(vigilante);
+        window.clearTimeout(finDeVoz);
+        vozSonando = false;
         canal?.close();
         conexion?.close();
         microfono?.getTracks().forEach((pista) => pista.stop());
@@ -221,8 +439,15 @@ export function useConversacionEnVivo(
         canal = null;
         conexion = null;
         microfono = null;
+        silenciado.value = false;
         parlante = null;
         herramientasPendientes = 0;
+        respuestaEnCurso = false;
+        respuestaPendiente = false;
+        itemsDeLaRespuesta.clear();
+        descartados.clear();
+        relevoPendiente = false;
+        respuestaRelevo = null;
         actividad.value = null;
     }
 
@@ -242,25 +467,25 @@ export function useConversacionEnVivo(
         estado.value = 'conectando';
 
         try {
-            microfono = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                },
-            });
+            microfono = await abrirMicrofono();
 
             const respuesta = await http.getClient().request({
                 method: 'post',
                 url: abrirSesion.url(),
-                data: { voz: datos.voz, reunion_id: datos.reunionId },
+                data: {
+                    voz: datos.voz,
+                    reunion_id: datos.reunionId,
+                    conversacion_id: datos.conversacionId(),
+                },
                 headers: { Accept: 'application/json' },
             });
-            const { llave, minutos_inactividad } = enJson<{
+            const { llave, minutos_inactividad, interrumpir } = enJson<{
                 llave: string;
                 minutos_inactividad: number;
+                interrumpir: boolean;
             }>(respuesta);
             minutosInactividad = minutos_inactividad;
+            interrumpible.value = interrumpir;
 
             if (numeroSesion !== sesion) {
                 return;
@@ -365,7 +590,11 @@ export function useConversacionEnVivo(
 
         const dichos = mensajes.value
             .filter((m) => m.contenido.trim())
-            .map((m) => ({ rol: m.rol, contenido: m.contenido.trim() }));
+            .map((m) => ({
+                rol: m.rol,
+                contenido: m.contenido.trim(),
+                creado_en: m.creado_en,
+            }));
 
         if (!dichos.length || !opciones) {
             estado.value = 'apagado';
@@ -382,7 +611,7 @@ export function useConversacionEnVivo(
                 url: guardarConversacion.url(),
                 data: {
                     reunion_id: opciones.reunionId,
-                    conversacion_id: opciones.conversacionId,
+                    conversacion_id: opciones.conversacionId(),
                     mensajes: dichos,
                 },
                 headers: { Accept: 'application/json' },
@@ -405,10 +634,34 @@ export function useConversacionEnVivo(
         }
     }
 
+    function alternarSilencio() {
+        const pista = microfono?.getAudioTracks()[0];
+
+        if (!pista) {
+            return;
+        }
+
+        silenciado.value = !silenciado.value;
+        aplicarMicrofono();
+        ultimaActividad = Date.now();
+    }
+
     onBeforeUnmount(() => {
         sesion++;
         cerrarConexion();
     });
 
-    return { estado, actividad, mensajes, error, iniciar, terminar };
+    return {
+        estado,
+        actividad,
+        mensajes,
+        error,
+        iniciar,
+        terminar,
+        silenciado,
+        interrumpible,
+        alternarSilencio,
+        avisarEnvioEscrito,
+        contarMensajeEscrito,
+    };
 }

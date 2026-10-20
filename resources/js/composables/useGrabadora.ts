@@ -372,7 +372,7 @@ export function useGrabadora(config: ConfigGrabacion, abierta: Reunion | null) {
     /**
      * Botón "Empezar reunión": crea una reunión nueva y empieza a grabar.
      */
-    async function escuchar(titulo?: string) {
+    async function escuchar(titulo?: string, agenda: string[] = []) {
         if (estado.value !== 'inactivo') {
             return;
         }
@@ -394,7 +394,7 @@ export function useGrabadora(config: ConfigGrabacion, abierta: Reunion | null) {
         try {
             const respuesta = await post<{ reunion: Reunion }>(
                 crearReunion.url(),
-                { titulo: titulo || null },
+                { titulo: titulo || null, agenda },
             );
             reunion.value = respuesta.reunion;
         } catch (e) {

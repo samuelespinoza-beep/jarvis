@@ -34,7 +34,7 @@ class GenerarResumen implements ShouldQueue
 
         if (trim($transcripcion) === '') {
             // Audio sin voz: no tiene sentido pagar una llamada a la IA.
-            $contenido = $this->resumenVacio();
+            $contenido = $this->resumenVacio($reunion);
             $modelo = 'ninguno';
             $tokens = 0;
         } else {
@@ -89,6 +89,9 @@ class GenerarResumen implements ShouldQueue
             $reunion->titulo ? "Título indicado por el usuario: {$reunion->titulo}" : null,
             'Fecha: '.$reunion->iniciada_en->translatedFormat('l j \d\e F \d\e Y, H:i'),
             "Duración: {$duracion} minutos",
+            $reunion->agenda
+                ? "Agenda:\n".implode("\n", array_map(fn (string $punto, int $i) => ($i + 1).". {$punto}", $reunion->agenda, array_keys($reunion->agenda)))
+                : 'La reunión no tenía agenda.',
             '',
             'Transcripción:',
             $transcripcion,
@@ -98,7 +101,7 @@ class GenerarResumen implements ShouldQueue
     /**
      * @return array<string, mixed>
      */
-    private function resumenVacio(): array
+    private function resumenVacio(Reunion $reunion): array
     {
         return [
             'titulo_sugerido' => 'Reunión sin conversación detectada',
@@ -110,6 +113,10 @@ class GenerarResumen implements ShouldQueue
             'pendientes' => [],
             'riesgos_o_puntos_criticos' => [],
             'sugerencias_de_mejora' => ['Verificar que el micrófono capte la sala antes de iniciar la reunión.'],
+            'agenda' => array_map(
+                fn (string $punto) => ['punto' => $punto, 'estado' => 'no_tratado', 'comentario' => 'No se detectó conversación.'],
+                $reunion->agenda ?? [],
+            ),
         ];
     }
 }

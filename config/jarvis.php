@@ -128,6 +128,21 @@ return [
         'minutos_inactividad' => 3,
         // Voces de la lista que no existen en tiempo real y su reemplazo más parecido.
         'voces_equivalentes' => ['onyx' => 'cedar', 'nova' => 'marin', 'fable' => 'ash'],
+        // Filtro de ruido de OpenAI: far_field para el micrófono de la laptop, near_field para audífonos con micrófono.
+        'microfono' => env('JARVIS_CONVERSACION_MICROFONO', 'far_field'),
+        // Cuándo se considera que el usuario habló. Un umbral alto ignora golpes, eco y ruido de fondo.
+        'deteccion' => [
+            // server_vad usa el umbral de volumen; semantic_vad no tiene umbral y se dispara con cualquier sonido.
+            'tipo' => env('JARVIS_CONVERSACION_DETECCION', 'server_vad'),
+            // De 0 a 1: más alto exige voz más clara y fuerte para contar como turno.
+            'umbral' => (float) env('JARVIS_CONVERSACION_UMBRAL', 0.7),
+            // Voz mínima previa que se guarda y silencio que cierra el turno.
+            'relleno_ms' => 300,
+            'silencio_ms' => (int) env('JARVIS_CONVERSACION_SILENCIO_MS', 700),
+            // Si es false, el micrófono se cierra mientras el asistente habla: con parlantes evita que
+            // su propia voz vuelva a entrar como eco. Con audífonos se puede activar para interrumpirlo.
+            'interrumpir' => (bool) env('JARVIS_CONVERSACION_INTERRUMPIR', false),
+        ],
     ],
 
     /*

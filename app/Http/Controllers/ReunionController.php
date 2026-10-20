@@ -17,6 +17,14 @@ use Illuminate\Support\Facades\Storage;
 
 class ReunionController extends Controller
 {
+    /**
+     * La agenda: hasta 20 puntos cortos, en orden.
+     */
+    private const REGLAS_AGENDA = [
+        'agenda' => ['nullable', 'array', 'max:20'],
+        'agenda.*' => ['nullable', 'string', 'max:200'],
+    ];
+
     public function __construct(
         private EspejoReunion $espejo,
         private CierreReunion $cierre,
@@ -29,6 +37,7 @@ class ReunionController extends Controller
     {
         $datos = $request->validate([
             'titulo' => ['nullable', 'string', 'max:255'],
+            ...self::REGLAS_AGENDA,
         ]);
 
         $activa = Reunion::query()->whereIn('estado', EstadoReunion::abiertos())->first();
@@ -42,6 +51,7 @@ class ReunionController extends Controller
 
         $reunion = Reunion::create([
             'titulo' => $datos['titulo'] ?? null,
+            'agenda' => $this->limpiarAgenda($datos['agenda'] ?? []),
             'estado' => EstadoReunion::Grabando,
             'iniciada_en' => now(),
             'creada_por' => $request->user()->id,
@@ -119,6 +129,34 @@ class ReunionController extends Controller
         $this->espejo->guardar($reunion);
 
         return $this->respuesta($reunion);
+    }
+
+    /**
+     * Cambia la agenda mientras la reunión sigue abierta.
+     */
+    public function agenda(Request $request, Reunion $reunion): JsonResponse
+    {
+        $datos = $request->validate(self::REGLAS_AGENDA);
+
+        if (! $reunion->estado->estaAbierta()) {
+            return response()->json(['message' => 'La reunión ya fue terminada.'], 409);
+        }
+
+        $reunion->update(['agenda' => $this->limpiarAgenda($datos['agenda'] ?? [])]);
+        $this->espejo->guardar($reunion);
+
+        return $this->respuesta($reunion);
+    }
+
+    /**
+     * @param  array<int, string|null>  $agenda
+     * @return list<string>|null
+     */
+    private function limpiarAgenda(array $agenda): ?array
+    {
+        $puntos = array_values(array_filter(array_map(fn ($punto) => trim((string) $punto), $agenda)));
+
+        return $puntos ?: null;
     }
 
     /**

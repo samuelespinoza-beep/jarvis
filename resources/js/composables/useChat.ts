@@ -17,9 +17,22 @@ export type MensajeChat = {
     actividad?: string;
 };
 
-// Lo que se le pide a Jarvis si se adjunta un documento sin escribir nada.
-export const PEDIDO_RESUMEN_DOCUMENTO =
-    'Resume este documento y dime sus temas centrales.';
+// Lo que se envía si se adjunta un documento sin escribir nada: Jarvis dice qué
+// documento es y pregunta qué hacer con él, sin resumirlo por su cuenta.
+export const MENSAJE_SOLO_DOCUMENTO = 'Te adjunto este documento.';
+
+// Textos que se envían solos con un documento (el de antes pedía un resumen); no se muestran.
+const TEXTOS_SOLO_DOCUMENTO = [
+    MENSAJE_SOLO_DOCUMENTO,
+    'Resume este documento y dime sus temas centrales.',
+];
+
+export function esSoloDocumento(mensaje: MensajeChat): boolean {
+    return (
+        !!mensaje.documento &&
+        TEXTOS_SOLO_DOCUMENTO.includes(mensaje.contenido.trim())
+    );
+}
 
 type EventoStream = {
     type: string;
@@ -35,6 +48,7 @@ export const ACTIVIDADES: Record<string, string> = {
     UltimosVideosYoutube: 'Revisando YouTube…',
     ConsultarReuniones: 'Buscando en las reuniones…',
     LeerReunion: 'Leyendo el acta…',
+    PreguntarAlChat: 'Revisando el documento y el chat…',
 };
 
 /**
@@ -103,7 +117,7 @@ export function useChat(reunionId: Ref<string | null>) {
      */
     async function enviar(texto: string, documento: File | null = null) {
         const mensaje =
-            texto.trim() || (documento ? PEDIDO_RESUMEN_DOCUMENTO : '');
+            texto.trim() || (documento ? MENSAJE_SOLO_DOCUMENTO : '');
 
         if (!mensaje || enviando.value) {
             return false;

@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property string $id
  * @property string|null $titulo
+ * @property list<string>|null $agenda
  * @property EstadoReunion $estado
  * @property Carbon $iniciada_en
  * @property Carbon|null $pausada_en
@@ -29,7 +30,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  */
 #[Table('reuniones')]
-#[Fillable(['titulo', 'estado', 'iniciada_en', 'pausada_en', 'finalizada_en', 'duracion_segundos', 'creada_por', 'conversacion_id'])]
+#[Fillable(['titulo', 'agenda', 'estado', 'iniciada_en', 'pausada_en', 'finalizada_en', 'duracion_segundos', 'creada_por', 'conversacion_id'])]
 class Reunion extends Model
 {
     use HasUlids;
@@ -43,6 +44,7 @@ class Reunion extends Model
     {
         return [
             'estado' => EstadoReunion::class,
+            'agenda' => 'array',
             'iniciada_en' => 'datetime',
             'pausada_en' => 'datetime',
             'finalizada_en' => 'datetime',

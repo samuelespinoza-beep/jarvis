@@ -42,6 +42,10 @@ class ResumidorReunion implements Agent, HasStructuredOutput
         - Si una sección no tiene contenido, devuelve una lista vacía.
         - "sugerencias_de_mejora" son recomendaciones tuyas para la próxima reunión o sobre temas que
           quedaron poco claros; sé concreto y breve.
+        - "agenda": si te dan la agenda, por cada punto (en el mismo orden y con el mismo texto) indica si se
+          trató ("tratado"), si se trató solo en parte o sin decisión ("parcial") o si no se trató
+          ("no_tratado"), con un comentario breve de lo que se dijo o resolvió. Si no hay agenda, lista vacía.
+          Los temas tratados que no estaban en la agenda van igual en las demás secciones.
         TXT;
     }
 
@@ -74,6 +78,11 @@ class ResumidorReunion implements Agent, HasStructuredOutput
             'pendientes' => $schema->array()->items($schema->string())->required(),
             'riesgos_o_puntos_criticos' => $schema->array()->items($schema->string())->required(),
             'sugerencias_de_mejora' => $schema->array()->items($schema->string())->required(),
+            'agenda' => $schema->array()->items($schema->object(fn (JsonSchema $schema) => [
+                'punto' => $schema->string()->required(),
+                'estado' => $schema->string()->enum(['tratado', 'parcial', 'no_tratado'])->required(),
+                'comentario' => $schema->string()->required(),
+            ]))->required(),
         ];
     }
 }

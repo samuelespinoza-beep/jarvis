@@ -5,6 +5,7 @@ use App\Http\Controllers\ConversacionEnVivoController;
 use App\Http\Controllers\DictadoController;
 use App\Http\Controllers\FragmentoAudioController;
 use App\Http\Controllers\HistorialController;
+use App\Http\Controllers\InformePrevioController;
 use App\Http\Controllers\JarvisController;
 use App\Http\Controllers\ReunionController;
 use App\Http\Controllers\TranscripcionEnVivoController;
@@ -29,10 +30,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('reuniones', [HistorialController::class, 'index'])->name('reuniones.index');
     Route::get('reuniones/{reunion}', [HistorialController::class, 'show'])->name('reuniones.show');
 
+    Route::post('reuniones/informe-previo', InformePrevioController::class)->middleware('throttle:10,1')->name('reuniones.informe-previo');
     Route::post('reuniones', [ReunionController::class, 'store'])->name('reuniones.store');
     Route::get('reuniones/{reunion}/estado', [ReunionController::class, 'estado'])->name('reuniones.estado');
     Route::post('reuniones/{reunion}/pausar', [ReunionController::class, 'pausar'])->name('reuniones.pausar');
     Route::post('reuniones/{reunion}/reanudar', [ReunionController::class, 'reanudar'])->name('reuniones.reanudar');
+    Route::put('reuniones/{reunion}/agenda', [ReunionController::class, 'agenda'])->name('reuniones.agenda');
     Route::post('reuniones/{reunion}/terminar', [ReunionController::class, 'terminar'])->name('reuniones.terminar');
     Route::post('reuniones/{reunion}/reprocesar', [ReunionController::class, 'reprocesar'])->name('reuniones.reprocesar');
     Route::post('reuniones/{reunion}/resumen', [ReunionController::class, 'regenerarResumen'])->name('reuniones.resumen.regenerar');

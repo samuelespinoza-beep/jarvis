@@ -3,13 +3,19 @@
 namespace Tests\Feature;
 
 use App\Ai\Agents\BuscadorWeb;
+use App\Ai\Agents\ConsultorDelChat;
 use App\Ai\Agents\Jarvis;
 use App\Enums\EstadoReunion;
 use App\Models\Reunion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as PeticionHttp;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use Laravel\Ai\Files\StoredDocument;
+use Laravel\Ai\Models\ConversationMessage;
+use Laravel\Ai\Prompts\AgentPrompt;
 use Tests\TestCase;
 
 class ConversacionEnVivoTest extends TestCase
@@ -45,8 +51,31 @@ class ConversacionEnVivoTest extends TestCase
                 && $sesion['model'] === 'gpt-realtime-2.1-mini'
                 && $sesion['audio']['output']['voice'] === 'cedar'
                 && str_contains($sesion['instructions'], 'Conversación por voz en vivo')
-                && $herramientas === ['BuscarEnInternet', 'LeerPagina', 'UltimosVideosYoutube', 'ConsultarReuniones', 'LeerReunion']
+                && $herramientas === ['BuscarEnInternet', 'LeerPagina', 'UltimosVideosYoutube', 'ConsultarReuniones', 'LeerReunion', 'PreguntarAlChat']
                 && $sesion['tools'][0]['parameters']['required'] === ['consulta'];
+        });
+    }
+
+    public function test_the_voice_session_ignores_knocks_and_echo_with_a_volume_threshold()
+    {
+        config([
+            'jarvis.conversacion.microfono' => 'far_field',
+            'jarvis.conversacion.deteccion.umbral' => 0.8,
+            'jarvis.conversacion.deteccion.interrumpir' => false,
+        ]);
+        Http::fake(['api.openai.com/v1/realtime/client_secrets' => Http::response(['value' => 'ek_voz_1'])]);
+
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('chat.en-vivo.sesion'))
+            ->assertOk();
+
+        Http::assertSent(function (PeticionHttp $peticion) {
+            $entrada = $peticion['session']['audio']['input'];
+
+            return $entrada['noise_reduction'] === ['type' => 'far_field']
+                && $entrada['turn_detection']['type'] === 'server_vad'
+                && $entrada['turn_detection']['threshold'] === 0.8
+                && $entrada['turn_detection']['interrupt_response'] === false;
         });
     }
 
@@ -118,5 +147,103 @@ class ConversacionEnVivoTest extends TestCase
 
         $this->assertNotNull($reunion->refresh()->conversacion_id);
         $this->getJson(route('chat.mensajes', ['reunion' => $reunion->id]))->assertJsonCount(1, 'mensajes');
+    }
+
+    public function test_the_voice_starts_with_the_chat_history_including_a_document()
+    {
+        Storage::fake('local');
+        Jarvis::fake(['El informe trata de las ventas de 2025.']);
+        Http::fake(['api.openai.com/v1/realtime/client_secrets' => Http::response(['value' => 'ek_voz_1'])]);
+        $usuario = User::factory()->create();
+        $this->actingAs($usuario);
+
+        $respuesta = $this->post(route('chat.enviar'), [
+            'mensaje' => 'Resume este documento.',
+            'documento' => UploadedFile::fake()->create('Informe anual.pdf', 120, 'application/pdf'),
+        ]);
+        $respuesta->streamedContent();
+        $id = $respuesta->headers->get('X-Conversacion-Id');
+
+        $this->postJson(route('chat.en-vivo.sesion'), ['conversacion_id' => $id])->assertOk();
+
+        Http::assertSent(fn (PeticionHttp $peticion) => str_contains($peticion['session']['instructions'], 'Lo conversado antes en este chat')
+            && str_contains($peticion['session']['instructions'], 'adjuntó el documento «Informe anual.pdf»')
+            && str_contains($peticion['session']['instructions'], 'El informe trata de las ventas de 2025.'));
+
+        // La conversación de otro usuario no se puede usar.
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('chat.en-vivo.sesion'), ['conversacion_id' => $id])
+            ->assertNotFound();
+    }
+
+    public function test_the_voice_asks_the_written_chat_about_a_document_without_duplicating_messages()
+    {
+        Storage::fake('local');
+        Jarvis::fake(['Es el informe anual.']);
+        ConsultorDelChat::fake(['La cláusula 5 fija el pago a 30 días.']);
+        $usuario = User::factory()->create();
+        $this->actingAs($usuario);
+
+        $respuesta = $this->post(route('chat.enviar'), [
+            'mensaje' => 'Resume este documento.',
+            'documento' => UploadedFile::fake()->create('Contrato.pdf', 120, 'application/pdf'),
+        ]);
+        $respuesta->streamedContent();
+        $id = $respuesta->headers->get('X-Conversacion-Id');
+
+        $this->postJson(route('chat.en-vivo.herramienta'), [
+            'nombre' => 'PreguntarAlChat',
+            'argumentos' => ['pregunta' => '¿Qué dice la cláusula 5 del contrato?'],
+            'conversacion_id' => $id,
+        ])->assertOk()->assertJsonPath('resultado', 'La cláusula 5 fija el pago a 30 días.');
+
+        // Recibe el documento completo desde el historial del chat.
+        ConsultorDelChat::assertPrompted(function (AgentPrompt $prompt) {
+            $mensajes = collect($prompt->agent->messages());
+
+            return $prompt->contains('cláusula 5')
+                && $mensajes->contains(fn ($mensaje) => $mensaje->attachments?->first() instanceof StoredDocument);
+        });
+
+        // La consulta no se guarda: lo dicho por voz se guarda al terminar.
+        $this->assertSame(2, ConversationMessage::query()->where('conversation_id', $id)->count());
+
+        // Sin conversación todavía, lo dice en vez de consultar.
+        $this->postJson(route('chat.en-vivo.herramienta'), ['nombre' => 'PreguntarAlChat', 'argumentos' => ['pregunta' => 'Hola']])
+            ->assertJsonPath('resultado', 'Este chat todavía no tiene documentos ni mensajes escritos.');
+    }
+
+    public function test_voice_messages_are_saved_at_the_time_they_were_said()
+    {
+        $this->actingAs(User::factory()->create());
+
+        $id = $this->postJson(route('chat.en-vivo.guardar'), ['mensajes' => [
+            ['rol' => 'usuario', 'contenido' => 'Primero', 'creado_en' => now()->subMinutes(5)->toIso8601String()],
+            ['rol' => 'jarvis', 'contenido' => 'Segundo', 'creado_en' => now()->subMinutes(4)->toIso8601String()],
+        ]])->assertOk()->json('conversacion_id');
+
+        $horas = ConversationMessage::query()->where('conversation_id', $id)->oldest()->pluck('created_at');
+
+        $this->assertEqualsWithDelta(now()->subMinutes(5)->timestamp, $horas[0]->timestamp, 2);
+        $this->assertEqualsWithDelta(now()->subMinutes(4)->timestamp, $horas[1]->timestamp, 2);
+    }
+
+    public function test_the_voice_gets_the_critical_advisor_rules_without_the_written_format()
+    {
+        Http::fake(['api.openai.com/v1/realtime/client_secrets' => Http::response(['value' => 'ek_voz_1'])]);
+
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('chat.en-vivo.sesion'))
+            ->assertOk();
+
+        Http::assertSent(fn (PeticionHttp $peticion) => str_contains($peticion['session']['instructions'], 'Directiva anti-complacencia')
+            && str_contains($peticion['session']['instructions'], 'hablar breve no es dar la razón')
+            && ! str_contains($peticion['session']['instructions'], 'Formato escrito')
+            && ! str_contains($peticion['session']['instructions'], '### Resumen'));
+
+        // El chat escrito sí recibe ambas.
+        $escrito = (string) (new Jarvis)->instructions();
+        $this->assertStringContainsString('Directiva anti-complacencia', $escrito);
+        $this->assertStringContainsString('### Resumen', $escrito);
     }
 }

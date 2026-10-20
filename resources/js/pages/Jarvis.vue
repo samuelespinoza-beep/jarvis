@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, http, Link } from '@inertiajs/vue3';
 import {
     CircleAlert,
     CircleCheck,
@@ -14,8 +14,11 @@ import {
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { show as verReunion } from '@/actions/App/Http/Controllers/HistorialController';
+import { agenda as actualizarAgenda } from '@/actions/App/Http/Controllers/ReunionController';
 import ChatJarvis from '@/components/jarvis/ChatJarvis.vue';
+import LineaDeTiempoReunion from '@/components/jarvis/LineaDeTiempoReunion.vue';
 import NucleoJarvis from '@/components/jarvis/NucleoJarvis.vue';
+import PreparacionReunion from '@/components/jarvis/PreparacionReunion.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGrabadora } from '@/composables/useGrabadora';
@@ -67,13 +70,6 @@ const {
 
 // Reunión terminada cuyo avance y resumen se muestran en el panel lateral.
 const reunionMostrada = ref<Reunion | null>(props.ultimaReunion);
-
-// Al empezar a grabar se muestra el chat, donde se va resumiendo cada minuto.
-watch(estado, (actual, anterior) => {
-    if (actual === 'escuchando' && anterior === 'iniciando') {
-        pestana.value = 'chat';
-    }
-});
 
 watch(reunion, (actual) => {
     reunionMostrada.value =
@@ -172,11 +168,80 @@ const colorFragmento: Record<EstadoFragmento, string> = {
     error: 'text-rose-600',
 };
 
+// Agenda de la próxima reunión: queda como borrador en el navegador hasta empezar.
+const CLAVE_BORRADOR_AGENDA = 'asistente-ia.agenda-borrador';
+
+function leerBorradorAgenda(): string[] {
+    try {
+        const guardado = JSON.parse(
+            localStorage.getItem(CLAVE_BORRADOR_AGENDA) ?? '[]',
+        ) as unknown;
+
+        return Array.isArray(guardado)
+            ? guardado.filter((punto) => typeof punto === 'string')
+            : [];
+    } catch {
+        return [];
+    }
+}
+
+const agendaBorrador = ref<string[]>(leerBorradorAgenda());
+
+watch(agendaBorrador, (puntos) => {
+    try {
+        localStorage.setItem(CLAVE_BORRADOR_AGENDA, JSON.stringify(puntos));
+    } catch {
+        // Sin almacenamiento, el borrador solo dura mientras la página siga abierta.
+    }
+});
+
+// Con la reunión en curso, la agenda es la de la reunión y se guarda al cambiarla.
+const agenda = computed<string[]>({
+    get: () =>
+        reunionAbierta.value && reunion.value
+            ? (reunion.value.agenda ?? [])
+            : agendaBorrador.value,
+    set: (puntos) => {
+        if (reunionAbierta.value && reunion.value) {
+            void guardarAgenda(puntos);
+        } else {
+            agendaBorrador.value = puntos;
+        }
+    },
+});
+
+async function guardarAgenda(puntos: string[]) {
+    const actual = reunion.value;
+
+    if (!actual) {
+        return;
+    }
+
+    const anterior = actual.agenda;
+    reunion.value = { ...actual, agenda: puntos };
+
+    try {
+        await http.getClient().request({
+            method: 'put',
+            url: actualizarAgenda.url(actual.id),
+            data: { agenda: puntos },
+            headers: { Accept: 'application/json' },
+        });
+    } catch {
+        if (reunion.value?.id === actual.id) {
+            reunion.value = { ...reunion.value, agenda: anterior };
+        }
+
+        toast.error('No se pudo guardar la agenda.');
+    }
+}
+
 async function iniciar() {
-    await escuchar(titulo.value.trim());
+    await escuchar(titulo.value.trim(), agendaBorrador.value);
 
     if (estado.value === 'escuchando') {
         titulo.value = '';
+        agendaBorrador.value = [];
     }
 }
 
@@ -232,14 +297,21 @@ const ordenesVoz = useOrdenesDeVoz(ejecutarOrden);
 const conversandoEnVivo = ref(false);
 let reanudarAlTerminarEnVivo = false;
 
-async function alCambiarEnVivo(activo: boolean) {
-    conversandoEnVivo.value = activo;
-
-    if (activo && estado.value === 'escuchando') {
+// Se pausa antes de abrir el micrófono de la voz: si la grabación sigue con el
+// micrófono abierto (sin cancelación de eco), el navegador puede quitársela
+// también a la voz, y el asistente se escucharía a sí mismo.
+async function pausarParaEnVivo() {
+    if (estado.value === 'escuchando') {
         reanudarAlTerminarEnVivo = true;
         toast('Reunión en pausa mientras conversas con el Asistente IA.');
         await pausar();
-    } else if (!activo && reanudarAlTerminarEnVivo) {
+    }
+}
+
+async function alCambiarEnVivo(activo: boolean) {
+    conversandoEnVivo.value = activo;
+
+    if (!activo && reanudarAlTerminarEnVivo) {
         reanudarAlTerminarEnVivo = false;
 
         if (estado.value === 'pausado') {
@@ -482,7 +554,7 @@ watch(
             </section>
 
             <aside
-                class="relative flex w-full flex-col gap-4 border-t border-hud-acento/20 bg-hud-superficie/10 p-5 lg:w-[28rem] lg:border-t-0 lg:border-l"
+                class="relative flex w-full flex-col gap-4 border-t border-hud-acento/20 bg-hud-superficie/10 p-5 lg:w-[32rem] lg:border-t-0 xl:w-[38rem] 2xl:w-[44rem] lg:border-l"
             >
                 <div
                     class="flex gap-1 border-b border-hud-acento/20"
@@ -517,17 +589,33 @@ watch(
                         reunionAbierta && reunion?.id === reunionDelChat
                     "
                     :reunion="reunionChat"
-                    :tramos="tramos"
                     :acta="acta"
                     :escuchando="escuchando"
                     :documentos="documentos"
                     :dictado-max-segundos="dictadoMaxSegundos"
                     :voces="voces"
                     @salir-de-reunion="reunionDelChat = null"
+                    :preparar-en-vivo="pausarParaEnVivo"
                     @en-vivo="alCambiarEnVivo"
                 />
 
-                <div v-show="pestana === 'reunion'" class="flex flex-col gap-4">
+                <div
+                    v-show="pestana === 'reunion'"
+                    class="-mr-2 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2"
+                >
+                    <template v-if="!reunionAbierta">
+                        <h2
+                            class="font-mono text-xs tracking-[0.3em] text-hud-acento-texto/80 uppercase"
+                        >
+                            Próxima reunión
+                        </h2>
+                        <PreparacionReunion
+                            v-model:agenda="agenda"
+                            :en-curso="false"
+                        />
+                        <hr class="border-hud-acento/20" />
+                    </template>
+
                     <h2
                         class="font-mono text-xs tracking-[0.3em] text-hud-acento-texto/80 uppercase"
                     >
@@ -571,16 +659,15 @@ watch(
                             para generar el acta.
                         </p>
 
-                        <p class="text-sm text-hud-suave">
-                            El resumen de cada minuto aparece en el
-                            <button
-                                type="button"
-                                class="font-medium text-hud-acento-texto underline underline-offset-2 hover:text-hud-texto"
-                                @click="pestana = 'chat'"
-                            >
-                                Chat</button
-                            >, junto con tus preguntas al Asistente IA.
-                        </p>
+                        <LineaDeTiempoReunion
+                            :tramos="tramos"
+                            :grabando="escuchando"
+                        />
+
+                        <PreparacionReunion
+                            v-model:agenda="agenda"
+                            :en-curso="true"
+                        />
 
                         <p
                             v-if="subidasPendientes.length"
@@ -753,6 +840,15 @@ watch(
                                 Ver acta completa
                             </Link>
                         </Button>
+
+                        <LineaDeTiempoReunion
+                            v-if="
+                                reunionDelChat === reunionMostrada.id &&
+                                tramos.length
+                            "
+                            :tramos="tramos"
+                            :grabando="false"
+                        />
                     </template>
 
                     <p v-else class="text-sm text-hud-suave">

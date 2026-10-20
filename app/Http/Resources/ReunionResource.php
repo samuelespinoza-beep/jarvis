@@ -21,6 +21,7 @@ class ReunionResource extends JsonResource
         return [
             'id' => $this->id,
             'titulo' => $this->titulo,
+            'agenda' => $this->agenda ?? [],
             'estado' => $this->estado->value,
             'iniciada_en' => $this->iniciada_en->toIso8601String(),
             'pausada_en' => $this->pausada_en?->toIso8601String(),

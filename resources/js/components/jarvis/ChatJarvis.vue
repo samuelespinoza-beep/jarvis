@@ -9,6 +9,7 @@ import {
     ChevronDown,
     LoaderCircle,
     Mic,
+    MicOff,
     Paperclip,
     Plus,
     SendHorizontal,
@@ -31,7 +32,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { PEDIDO_RESUMEN_DOCUMENTO, useChat } from '@/composables/useChat';
+import { esSoloDocumento, useChat } from '@/composables/useChat';
 import type { MensajeChat } from '@/composables/useChat';
 import { useConversacionEnVivo } from '@/composables/useConversacionEnVivo';
 import { useDictado } from '@/composables/useDictado';
@@ -43,7 +44,6 @@ import type {
     ConfigVoces,
     ContenidoResumen,
     Reunion,
-    TramoReunion,
 } from '@/types';
 
 const props = withDefaults(
@@ -53,18 +53,18 @@ const props = withDefaults(
         reunionAbierta?: boolean;
         // Estado de esa reunión según el servidor (para el acta).
         reunion?: Reunion | null;
-        tramos?: TramoReunion[];
         acta?: ContenidoResumen | null;
         escuchando?: boolean;
         documentos: ConfigDocumentos;
         // Duración máxima de un dictado por micrófono.
         dictadoMaxSegundos?: number;
         voces: ConfigVoces;
+        // Se espera antes de abrir el micrófono de la voz en vivo (pausar la reunión que se graba).
+        prepararEnVivo?: () => Promise<void>;
     }>(),
     {
         reunionAbierta: false,
         reunion: null,
-        tramos: () => [],
         acta: null,
         escuchando: false,
         dictadoMaxSegundos: 120,
@@ -98,26 +98,32 @@ const enVivo = useConversacionEnVivo(async (id) => {
 
 const conversandoEnVivo = computed(() => enVivo.estado.value !== 'apagado');
 
-const textoEnVivo = computed(
-    () =>
-        ({
-            apagado: '',
-            conectando: 'Conectando…',
-            escuchando: 'Te escucho. Habla cuando quieras.',
-            pensando: enVivo.actividad.value ?? 'Pensando…',
-            hablando: 'Respondiendo… (puedes interrumpirlo hablando)',
-            guardando: 'Guardando la conversación en el chat…',
-        })[enVivo.estado.value],
+const textoEnVivo = computed(() =>
+    enviando.value && enVivo.estado.value === 'escuchando'
+        ? 'Respondiendo por escrito… en unos segundos te lo comento.'
+        : enVivo.silenciado.value && enVivo.estado.value === 'escuchando'
+          ? 'Micrófono silenciado: actívalo para hablar.'
+          : {
+                apagado: '',
+                conectando: 'Conectando…',
+                escuchando: 'Te escucho. Habla cuando quieras.',
+                pensando: enVivo.actividad.value ?? 'Pensando…',
+                hablando: enVivo.interrumpible.value
+                    ? 'Respondiendo… (puedes interrumpirlo hablando)'
+                    : 'Respondiendo… (te escucho cuando termine)',
+                guardando: 'Guardando la conversación en el chat…',
+            }[enVivo.estado.value],
 );
 
 async function hablarEnVivo() {
     voz.detener();
     error.value = null;
     pegadoAlFinal.value = true;
+    await props.prepararEnVivo?.();
     await enVivo.iniciar({
         voz: voz.voz.value,
         reunionId: props.reunionId,
-        conversacionId: conversacionId.value,
+        conversacionId: () => conversacionId.value,
     });
 }
 
@@ -187,7 +193,6 @@ const pegadoAlFinal = ref(true);
 
 type Entrada =
     | { tipo: 'mensaje'; clave: string; hora: number; mensaje: MensajeChat }
-    | { tipo: 'tramo'; clave: string; hora: number; tramo: TramoReunion }
     | { tipo: 'acta'; clave: string; hora: number };
 
 const hora = (iso: string | null | undefined) =>
@@ -216,12 +221,6 @@ const entradas = computed<Entrada[]>(() => {
                 creado_en: dicho.creado_en,
             },
         })),
-        ...props.tramos.map((tramo) => ({
-            tipo: 'tramo' as const,
-            clave: `t${tramo.orden}`,
-            hora: hora(tramo.creado_en),
-            tramo,
-        })),
     ];
 
     const terminada =
@@ -243,12 +242,6 @@ const entradas = computed<Entrada[]>(() => {
 const chatDeReunionTerminada = computed(
     () => props.reunionId !== null && !props.reunionAbierta,
 );
-
-function rango(tramo: TramoReunion): string {
-    return `${formatearTiempo(tramo.inicio_segundos)} – ${formatearTiempo(
-        tramo.inicio_segundos + tramo.duracion_segundos,
-    )}`;
-}
 
 function alPulsarNueva() {
     voz.detener();
@@ -320,6 +313,7 @@ function adjuntar(archivo: File | undefined) {
     }
 
     error.value = null;
+
     documento.value = archivo;
 }
 
@@ -358,10 +352,29 @@ async function mandar(mensaje = texto.value) {
 
     voz.detener();
 
+    if (conversandoEnVivo.value) {
+        enVivo.avisarEnvioEscrito(mensaje.trim(), archivo?.name ?? null);
+    }
+
     // Si no llegó a Jarvis, se devuelve lo que el usuario había preparado.
     if (!(await enviar(mensaje, archivo))) {
         texto.value = escrito;
         documento.value = archivo;
+
+        return;
+    }
+
+    // Con la voz en vivo, la respuesta escrita se le pasa a la voz para que la comente.
+    if (conversandoEnVivo.value) {
+        const respuesta = mensajes.value.at(-1);
+
+        if (respuesta?.rol === 'jarvis' && respuesta.contenido.trim()) {
+            enVivo.contarMensajeEscrito(
+                mensaje.trim(),
+                archivo?.name ?? null,
+                respuesta.contenido,
+            );
+        }
 
         return;
     }
@@ -416,7 +429,6 @@ watch(
         enVivo.mensajes.value.at(-1)?.contenido,
         props.reunion?.estado,
         props.acta,
-        props.tramos.filter((tramo) => tramo.resumen).length,
     ],
     () => bajar(),
 );
@@ -454,7 +466,7 @@ watch(
         <div class="flex items-center justify-between">
             <p class="text-xs text-hud-suave">
                 <template v-if="reunionId && reunionAbierta">
-                    Chat de la reunión en curso: aquí se resume cada minuto.
+                    Chat de la reunión en curso: conoce lo que se va diciendo.
                 </template>
                 <template v-else-if="reunionId">
                     Chat de la reunión terminada. Puedes seguir preguntando
@@ -594,7 +606,11 @@ watch(
                                 entrada.mensaje.documento
                             }}</span>
                         </span>
-                        <p class="whitespace-pre-wrap">
+                        <!-- Un documento enviado sin escribir nada se ve solo con su nombre. -->
+                        <p
+                            v-if="!esSoloDocumento(entrada.mensaje)"
+                            class="whitespace-pre-wrap"
+                        >
                             {{ entrada.mensaje.contenido }}
                         </p>
                     </div>
@@ -655,52 +671,6 @@ watch(
                             </button>
                         </div>
                     </div>
-                </div>
-
-                <div
-                    v-else-if="entrada.tipo === 'tramo'"
-                    class="rounded-xl border border-dashed border-hud-acento/25 bg-hud-superficie/40 px-3 py-2 text-sm"
-                >
-                    <p class="font-mono text-[11px] text-hud-acento-texto/60">
-                        Minuto {{ rango(entrada.tramo) }}
-                    </p>
-                    <template v-if="entrada.tramo.resumen">
-                        <p class="font-medium text-hud-texto">
-                            {{ entrada.tramo.resumen.tema }}
-                        </p>
-                        <p class="text-hud-texto/70">
-                            {{ entrada.tramo.resumen.resumen }}
-                        </p>
-                        <ul
-                            v-if="entrada.tramo.resumen.puntos.length"
-                            class="mt-1 list-disc pl-5 text-xs text-hud-texto/60"
-                        >
-                            <li
-                                v-for="punto in entrada.tramo.resumen.puntos"
-                                :key="punto"
-                            >
-                                {{ punto }}
-                            </li>
-                        </ul>
-                    </template>
-                    <p
-                        v-else-if="entrada.tramo.estado === 'error'"
-                        class="text-xs text-rose-600"
-                        :title="entrada.tramo.error ?? undefined"
-                    >
-                        No se pudo transcribir este minuto.
-                    </p>
-                    <p
-                        v-else
-                        class="flex items-center gap-2 text-xs text-hud-acento-texto/70"
-                    >
-                        <LoaderCircle class="size-3 animate-spin" />
-                        {{
-                            entrada.tramo.estado === 'listo'
-                                ? 'Resumiendo…'
-                                : 'Transcribiendo…'
-                        }}
-                    </p>
                 </div>
 
                 <div
@@ -796,13 +766,6 @@ watch(
                     </template>
                 </div>
             </template>
-
-            <p
-                v-if="reunionAbierta && escuchando && tramos.length"
-                class="text-xs text-hud-suave"
-            >
-                Minuto en curso… se resumirá al completarse.
-            </p>
         </div>
 
         <p
@@ -824,135 +787,133 @@ watch(
             }}
         </p>
 
-        <div
-            v-if="documento"
-            class="flex items-center gap-2 rounded-lg border border-hud-acento/30 bg-hud-superficie/40 px-3 py-2 text-sm text-hud-texto"
-        >
-            <FileText class="size-4 shrink-0 text-hud-acento-texto" />
-            <span class="min-w-0 flex-1 truncate">{{ documento.name }}</span>
-            <span class="shrink-0 text-xs text-hud-suave">
-                {{ formatearTamano(documento.size) }}
-            </span>
-            <button
-                type="button"
-                class="shrink-0 rounded p-0.5 text-hud-suave hover:bg-hud-superficie hover:text-hud-texto"
-                aria-label="Quitar documento"
-                :disabled="enviando"
-                @click="documento = null"
-            >
-                <X class="size-4" />
-            </button>
-        </div>
+        <input
+            ref="selectorArchivo"
+            type="file"
+            class="hidden"
+            :accept="formatosAceptados"
+            @change="alElegirArchivo"
+        />
 
-        <div
-            v-if="conversandoEnVivo"
-            class="flex items-center gap-3 rounded-xl border border-hud-acento/40 bg-hud-superficie/50 px-4 py-3"
-            role="status"
-        >
-            <span class="relative flex size-4 shrink-0">
-                <span
-                    class="absolute inline-flex size-full rounded-full bg-hud-acento opacity-60"
-                    :class="
-                        enVivo.estado.value === 'hablando' ||
-                        enVivo.estado.value === 'escuchando'
-                            ? 'animate-ping'
-                            : ''
-                    "
-                />
-                <span
-                    class="relative inline-flex size-4 rounded-full bg-hud-acento"
-                />
-            </span>
-            <div class="min-w-0 flex-1">
-                <p class="text-sm font-medium text-hud-texto">
-                    Conversación en vivo
-                </p>
-                <p class="flex items-center gap-1.5 text-xs text-hud-suave">
-                    <LoaderCircle
-                        v-if="
-                            ['conectando', 'pensando', 'guardando'].includes(
-                                enVivo.estado.value,
-                            )
-                        "
-                        class="size-3 animate-spin"
-                    />
-                    {{ textoEnVivo }}
-                </p>
-            </div>
-            <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                :disabled="enVivo.estado.value === 'guardando'"
-                @click="enVivo.terminar"
-            >
-                <Square />
-                Terminar
-            </Button>
-        </div>
-
+        <!-- Una sola caja: la voz en vivo, el documento, el texto y las acciones. -->
         <form
-            v-else
-            class="flex items-end gap-2"
+            class="flex flex-col rounded-2xl border bg-hud-superficie/30 transition-[border-color,box-shadow] focus-within:border-hud-acento"
+            :class="
+                conversandoEnVivo
+                    ? 'border-hud-acento/60 shadow-[0_0_0_3px_rgba(var(--hud-acento-rgb),0.12)]'
+                    : 'border-hud-acento/30'
+            "
             @submit.prevent="alEnviarFormulario"
         >
-            <input
-                ref="selectorArchivo"
-                type="file"
-                class="hidden"
-                :accept="formatosAceptados"
-                @change="alElegirArchivo"
-            />
-            <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                :disabled="enviando"
-                class="text-hud-suave hover:bg-hud-superficie hover:text-hud-texto"
-                aria-label="Adjuntar documento"
-                :title="`Adjuntar documento (${nombresFormatos})`"
-                @click="selectorArchivo?.click()"
+            <div
+                v-if="conversandoEnVivo"
+                class="flex items-center gap-3 rounded-t-2xl border-b border-hud-acento/20 bg-hud-acento/5 px-3 py-2"
+                role="status"
             >
-                <Paperclip />
-            </Button>
-            <Button
-                v-if="dictado.estado.value === 'inactivo'"
-                type="button"
-                size="icon"
-                variant="ghost"
-                :disabled="enviando"
-                class="text-hud-suave hover:bg-hud-superficie hover:text-hud-texto"
-                aria-label="Dictar mensaje"
-                :title="
-                    escuchando
-                        ? 'Dictar mensaje (lo que digas también quedará en la grabación de la reunión)'
-                        : 'Dictar mensaje'
-                "
-                @click="dictar"
-            >
-                <Mic />
-            </Button>
-            <Button
-                v-if="dictado.estado.value === 'inactivo'"
-                type="button"
-                size="icon"
-                variant="ghost"
-                :disabled="enviando"
-                class="text-hud-acento-texto hover:bg-hud-superficie"
-                aria-label="Conversar por voz en vivo"
-                :title="
-                    escuchando
-                        ? 'Conversar por voz en vivo (la reunión se pausa mientras tanto)'
-                        : 'Conversar por voz en vivo: hablas y responde con voz'
-                "
-                @click="hablarEnVivo"
-            >
-                <AudioLines />
-            </Button>
+                <span
+                    class="flex h-5 shrink-0 items-center gap-[3px]"
+                    aria-hidden="true"
+                >
+                    <span
+                        v-for="barra in 5"
+                        :key="barra"
+                        class="onda w-[3px] rounded-full bg-hud-acento"
+                        :class="{
+                            'onda-activa':
+                                enVivo.estado.value === 'hablando' ||
+                                (enVivo.estado.value === 'escuchando' &&
+                                    !enVivo.silenciado.value),
+                        }"
+                        :style="{ animationDelay: `${barra * 0.12}s` }"
+                    />
+                </span>
+                <div class="min-w-0 flex-1">
+                    <p
+                        class="text-[11px] font-semibold tracking-[0.15em] text-hud-acento-texto uppercase"
+                    >
+                        En vivo
+                    </p>
+                    <p
+                        class="flex items-center gap-1.5 truncate text-xs text-hud-suave"
+                    >
+                        <LoaderCircle
+                            v-if="
+                                enviando ||
+                                [
+                                    'conectando',
+                                    'pensando',
+                                    'guardando',
+                                ].includes(enVivo.estado.value)
+                            "
+                            class="size-3 shrink-0 animate-spin"
+                        />
+                        {{ textoEnVivo }}
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    class="flex size-7 shrink-0 items-center justify-center rounded-full border transition-colors disabled:opacity-50"
+                    :class="
+                        enVivo.silenciado.value
+                            ? 'border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100'
+                            : 'border-hud-acento/40 bg-white/60 text-hud-acento-texto hover:bg-hud-acento/10'
+                    "
+                    :disabled="
+                        ['conectando', 'guardando'].includes(
+                            enVivo.estado.value,
+                        )
+                    "
+                    :aria-label="
+                        enVivo.silenciado.value
+                            ? 'Activar micrófono'
+                            : 'Silenciar micrófono'
+                    "
+                    :aria-pressed="enVivo.silenciado.value"
+                    :title="
+                        enVivo.silenciado.value
+                            ? 'Activar micrófono'
+                            : 'Silenciar micrófono (la conversación sigue abierta)'
+                    "
+                    @click="enVivo.alternarSilencio"
+                >
+                    <MicOff v-if="enVivo.silenciado.value" class="size-3.5" />
+                    <Mic v-else class="size-3.5" />
+                </button>
+                <button
+                    type="button"
+                    class="flex shrink-0 items-center gap-1.5 rounded-full border border-rose-300 bg-white/60 px-3 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                    :disabled="enVivo.estado.value === 'guardando'"
+                    @click="enVivo.terminar"
+                >
+                    <Square class="size-3 fill-current" />
+                    Terminar
+                </button>
+            </div>
+
+            <div v-if="documento" class="px-3 pt-3">
+                <div
+                    class="inline-flex max-w-full items-center gap-2 rounded-lg border border-hud-acento/30 bg-hud-fondo/70 px-2.5 py-1.5 text-sm text-hud-texto"
+                >
+                    <FileText class="size-4 shrink-0 text-hud-acento-texto" />
+                    <span class="min-w-0 truncate">{{ documento.name }}</span>
+                    <span class="shrink-0 text-xs text-hud-suave">
+                        {{ formatearTamano(documento.size) }}
+                    </span>
+                    <button
+                        type="button"
+                        class="shrink-0 rounded p-0.5 text-hud-suave hover:bg-hud-superficie hover:text-hud-texto"
+                        aria-label="Quitar documento"
+                        :disabled="enviando"
+                        @click="documento = null"
+                    >
+                        <X class="size-3.5" />
+                    </button>
+                </div>
+            </div>
 
             <div
                 v-if="dictado.estado.value !== 'inactivo'"
-                class="flex min-h-[2.75rem] flex-1 items-center gap-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-hud-texto"
+                class="m-2 flex min-h-[2.75rem] items-center gap-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-hud-texto"
                 role="status"
             >
                 <template v-if="dictado.estado.value === 'grabando'">
@@ -1010,38 +971,128 @@ watch(
                 maxlength="4000"
                 :placeholder="
                     documento
-                        ? `Pregunta algo del documento o envía para: “${PEDIDO_RESUMEN_DOCUMENTO}”`
-                        : 'Escríbele al Asistente IA…'
+                        ? 'Pregunta algo del documento, o envíalo así'
+                        : conversandoEnVivo
+                          ? 'Escribe o adjunta algo mientras conversan…'
+                          : 'Escríbele al Asistente IA…'
                 "
                 aria-label="Mensaje para el Asistente IA"
-                class="min-h-[2.75rem] flex-1 resize-none rounded-lg border border-hud-acento/30 bg-hud-superficie/30 px-3 py-2 text-sm text-hud-texto placeholder:text-hud-suave/70 focus:border-hud-acento focus:outline-none"
+                class="min-h-[3.5rem] w-full resize-none bg-transparent px-3 pt-3 pb-1 text-sm text-hud-texto placeholder:text-hud-suave/70 focus:outline-none"
                 @keydown="alPresionarTecla"
             />
-            <Button
-                type="submit"
-                size="icon"
-                :disabled="
-                    enviando ||
-                    dictado.estado.value === 'transcribiendo' ||
-                    (dictado.estado.value === 'inactivo' &&
-                        !texto.trim() &&
-                        !documento)
-                "
-                class="bg-hud-acento text-hud-sobre-acento hover:bg-hud-acento-fuerte"
-                :title="
-                    dictado.estado.value === 'grabando'
-                        ? 'Terminar y enviar (Enter)'
-                        : 'Enviar'
-                "
-                aria-label="Enviar"
-            >
-                <SendHorizontal />
-            </Button>
+
+            <div class="flex items-center gap-1 px-2 pb-2">
+                <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    :disabled="enviando"
+                    class="size-8 rounded-full text-hud-suave hover:bg-hud-superficie hover:text-hud-texto"
+                    aria-label="Adjuntar documento"
+                    :title="`Adjuntar documento (${nombresFormatos})`"
+                    @click="selectorArchivo?.click()"
+                >
+                    <Paperclip />
+                </Button>
+                <Button
+                    v-if="
+                        dictado.estado.value === 'inactivo' &&
+                        !conversandoEnVivo
+                    "
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    :disabled="enviando"
+                    class="size-8 rounded-full text-hud-suave hover:bg-hud-superficie hover:text-hud-texto"
+                    aria-label="Dictar mensaje"
+                    :title="
+                        escuchando
+                            ? 'Dictar mensaje (lo que digas también quedará en la grabación de la reunión)'
+                            : 'Dictar mensaje'
+                    "
+                    @click="dictar"
+                >
+                    <Mic />
+                </Button>
+                <button
+                    v-if="
+                        dictado.estado.value === 'inactivo' &&
+                        !conversandoEnVivo
+                    "
+                    type="button"
+                    :disabled="enviando"
+                    class="flex h-8 items-center gap-1.5 rounded-full border border-hud-acento/40 px-3 text-xs font-medium text-hud-acento-texto transition-colors hover:bg-hud-acento/10 disabled:opacity-50"
+                    :title="
+                        escuchando
+                            ? 'Conversar por voz en vivo (la reunión se pausa mientras tanto)'
+                            : 'Conversar por voz en vivo: hablas y responde con voz'
+                    "
+                    @click="hablarEnVivo"
+                >
+                    <AudioLines class="size-4" />
+                    En vivo
+                </button>
+
+                <span
+                    class="ml-auto hidden pr-1 text-[11px] text-hud-suave/70 sm:inline"
+                >
+                    Enter para enviar · Shift + Enter, nueva línea
+                </span>
+                <Button
+                    type="submit"
+                    size="icon"
+                    :disabled="
+                        enviando ||
+                        dictado.estado.value === 'transcribiendo' ||
+                        (dictado.estado.value === 'inactivo' &&
+                            !texto.trim() &&
+                            !documento)
+                    "
+                    class="ml-auto size-8 rounded-full bg-hud-acento text-hud-sobre-acento hover:bg-hud-acento-fuerte sm:ml-0"
+                    :title="
+                        dictado.estado.value === 'grabando'
+                            ? 'Terminar y enviar (Enter)'
+                            : 'Enviar'
+                    "
+                    aria-label="Enviar"
+                >
+                    <SendHorizontal />
+                </Button>
+            </div>
         </form>
     </div>
 </template>
 
 <style scoped>
+/* Barras de la voz en vivo: se mueven mientras escucha o habla. */
+.onda {
+    height: 6px;
+    opacity: 0.5;
+}
+
+.onda-activa {
+    animation: onda 1s ease-in-out infinite;
+    opacity: 1;
+}
+
+@keyframes onda {
+    0%,
+    100% {
+        height: 5px;
+    }
+
+    50% {
+        height: 18px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .onda-activa {
+        animation: none;
+        height: 12px;
+    }
+}
+
 .respuesta-jarvis :deep(a) {
     color: var(--hud-acento-texto);
     text-decoration: underline;
