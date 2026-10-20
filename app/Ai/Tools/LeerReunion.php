@@ -18,9 +18,6 @@ class LeerReunion implements Tool
 
     private const MAX_CARACTERES_CHAT = 60000;
 
-    /**
-     * Get the description of the tool's purpose.
-     */
     public function description(): Stringable|string
     {
         return 'Devuelve el acta completa (acuerdos, pendientes, puntos tratados) de una reunión por su ID '
@@ -30,9 +27,6 @@ class LeerReunion implements Tool
             .'conversado con el Asistente IA en el chat de esa reunión, escrito y por voz en vivo.';
     }
 
-    /**
-     * Execute the tool.
-     */
     public function handle(Request $request): Stringable|string
     {
         $reunion = Reunion::query()->with('resumen')->find($request->string('id')->toString());
@@ -76,9 +70,6 @@ class LeerReunion implements Tool
             .implode("\n", array_map(fn (array $documento) => "- {$documento['name']} (archivo: {$documento['archivo']})", $documentos));
     }
 
-    /**
-     * Get the tool's schema definition.
-     */
     public function schema(JsonSchema $schema): array
     {
         return [

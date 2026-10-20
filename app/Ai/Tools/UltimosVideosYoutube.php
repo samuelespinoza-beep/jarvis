@@ -24,9 +24,6 @@ class UltimosVideosYoutube implements Tool
 {
     public function __construct(private Navegador $navegador = new Navegador) {}
 
-    /**
-     * Get the description of the tool's purpose.
-     */
     public function description(): Stringable|string
     {
         return 'Devuelve los últimos videos publicados por un canal de YouTube (título, fecha y enlace). '
@@ -34,9 +31,6 @@ class UltimosVideosYoutube implements Tool
             .'Si solo conoces el nombre del canal, busca primero su @usuario en internet.';
     }
 
-    /**
-     * Execute the tool.
-     */
     public function handle(Request $request): Stringable|string
     {
         $canal = $request->string('canal')->trim()->toString();
@@ -57,9 +51,6 @@ class UltimosVideosYoutube implements Tool
         }
     }
 
-    /**
-     * Get the tool's schema definition.
-     */
     public function schema(JsonSchema $schema): array
     {
         return [

@@ -357,9 +357,6 @@ export function useGrabadora(config: ConfigGrabacion, abierta: Reunion | null) {
         estado.value = 'escuchando';
     }
 
-    /**
-     * Cierra el fragmento en curso y suelta el micrófono.
-     */
     async function detenerTramo() {
         window.clearInterval(intervaloFragmento);
         grabador?.stop();
@@ -369,9 +366,6 @@ export function useGrabadora(config: ConfigGrabacion, abierta: Reunion | null) {
         liberarMicrofono();
     }
 
-    /**
-     * Botón "Empezar reunión": crea una reunión nueva y empieza a grabar.
-     */
     async function escuchar(titulo?: string, agenda: string[] = []) {
         if (estado.value !== 'inactivo') {
             return;
@@ -455,9 +449,6 @@ export function useGrabadora(config: ConfigGrabacion, abierta: Reunion | null) {
         }
     }
 
-    /**
-     * Botón "Reanudar": vuelve a grabar en la misma reunión.
-     */
     async function reanudar() {
         if (estado.value !== 'pausado' || !reunion.value) {
             return;

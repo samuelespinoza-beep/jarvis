@@ -16,7 +16,7 @@ if [ -t 0 ]; then
 fi
 
 if [ "$respuesta" != "s" ] && [ -d "$DESTINO/app" ]; then
-    RESPALDO="$HOME/Jarvis-respaldo-$(date +%Y%m%d-%H%M)"
+    RESPALDO="$HOME/Asistente-IA-respaldo-$(date +%Y%m%d-%H%M)"
     mkdir -p "$RESPALDO/database" "$RESPALDO/storage"
     cp -a "$DESTINO/app/.env" "$RESPALDO/" 2>/dev/null || true
     cp -a "$DESTINO/app/database/database.sqlite" "$RESPALDO/database/" 2>/dev/null || true

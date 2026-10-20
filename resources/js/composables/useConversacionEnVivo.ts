@@ -560,7 +560,6 @@ export function useConversacionEnVivo(
         }
     }
 
-    // El micrófono escucha salvo que esté silenciado o, sin interrupciones, mientras habla.
     function aplicarMicrofono() {
         const pista = microfono?.getAudioTracks()[0];
 
@@ -599,10 +598,6 @@ export function useConversacionEnVivo(
         actividad.value = null;
     }
 
-    /**
-     * Abre la conversación: pide la llave al servidor, el micrófono al
-     * navegador y se conecta con OpenAI.
-     */
     async function iniciar(datos: Opciones) {
         if (estado.value !== 'apagado') {
             return;

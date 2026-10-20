@@ -11,7 +11,6 @@ defineProps<{
     <div
         class="relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-background p-6 text-foreground md:p-10"
     >
-        <!-- Rejilla y resplandor de fondo estilo HUD -->
         <div
             class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(var(--hud-acento-rgb),0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(var(--hud-acento-rgb),0.05)_1px,transparent_1px)] bg-[size:32px_32px]"
         />

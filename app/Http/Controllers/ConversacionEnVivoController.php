@@ -160,7 +160,6 @@ class ConversacionEnVivoController extends Controller
             'mensajes.*.rol' => ['required', Rule::in(['usuario', 'jarvis'])],
             'mensajes.*.contenido' => ['required', 'string', 'max:20000'],
             'mensajes.*.creado_en' => ['nullable', 'date'],
-            // ID del mensaje, para guardar por partes sin duplicar.
             'mensajes.*.id' => ['nullable', 'uuid'],
         ]);
 
@@ -179,7 +178,6 @@ class ConversacionEnVivoController extends Controller
             $mensajeId = $mensaje['id'] ?? (string) Str::uuid7();
             $existente = ConversationMessage::query()->find($mensajeId, ['id', 'conversation_id']);
 
-            // Se guarda por partes mientras se habla: lo ya guardado solo se actualiza.
             if ($existente) {
                 if ($existente->conversation_id === $id) {
                     ConversationMessage::query()->whereKey($mensajeId)->update([

@@ -10,7 +10,7 @@ done
 
 read -r -p "¿Borrar también las reuniones y la configuración? [s/N] " respuesta
 if [ "$respuesta" != "s" ] && [ -d "$DESTINO/app" ]; then
-    RESPALDO="$HOME/Jarvis-respaldo-$(date +%Y%m%d-%H%M)"
+    RESPALDO="$HOME/Asistente-IA-respaldo-$(date +%Y%m%d-%H%M)"
     mkdir -p "$RESPALDO/database" "$RESPALDO/storage"
     cp -a "$DESTINO/app/.env" "$RESPALDO/" 2>/dev/null
     cp -a "$DESTINO/app/database/database.sqlite" "$RESPALDO/database/" 2>/dev/null

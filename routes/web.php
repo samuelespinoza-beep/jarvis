@@ -18,7 +18,9 @@ Route::get('/', fn () => redirect()->route('jarvis'))->name('home');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
 
-    Route::get('jarvis', JarvisController::class)->name('jarvis');
+    Route::get('assistant', JarvisController::class)->name('jarvis');
+    // Dirección anterior: los marcadores guardados siguen funcionando.
+    Route::redirect('jarvis', 'assistant');
 
     Route::get('chat/mensajes', [ChatController::class, 'mensajes'])->name('chat.mensajes');
     Route::get('chat/adjuntos/{mensaje}', [ChatController::class, 'adjunto'])->name('chat.adjunto');

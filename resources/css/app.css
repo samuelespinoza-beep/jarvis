@@ -173,15 +173,12 @@
 }
 
 /*
- * Tema de Jarvis para toda la app: fondo blanco y acento naranja, al estilo del
- * JARVIS de Iron Man. El marco, el menú lateral y las pantallas comparten estos
- * colores. Para cambiar el tema basta con editar este bloque: los componentes
- * usan las variables --hud-* (clases bg-hud-*, text-hud-*, border-hud-*).
+ * Tema de Jarvis para toda la app. Para cambiarlo basta con editar este bloque:
+ * los componentes usan las variables --hud-* (clases bg-hud-*, text-hud-*, border-hud-*).
  */
 .tema-jarvis {
     color-scheme: light;
 
-    /* Colores propios de Jarvis */
     --hud-fondo: hsl(0 0% 100%);
     --hud-superficie: hsl(33 100% 94%);
     --hud-texto: hsl(24 25% 12%);

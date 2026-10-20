@@ -16,9 +16,6 @@ use Stringable;
  */
 class ConsultarDocumentoReunion implements Tool
 {
-    /**
-     * Get the description of the tool's purpose.
-     */
     public function description(): Stringable|string
     {
         return 'Lee un documento (PDF, Word, etc.) o una imagen adjuntada en el chat de una reunión y responde una pregunta '
@@ -26,9 +23,6 @@ class ConsultarDocumentoReunion implements Tool
             .'pregunta completa, o pide un resumen si quieren revisarlo en general.';
     }
 
-    /**
-     * Execute the tool.
-     */
     public function handle(Request $request): Stringable|string
     {
         $reunion = Reunion::query()->find($request->string('reunion_id')->toString());
@@ -54,9 +48,6 @@ class ConsultarDocumentoReunion implements Tool
         return "Documento «{$documento['name']}»:\n{$respuesta->text}";
     }
 
-    /**
-     * Get the tool's schema definition.
-     */
     public function schema(JsonSchema $schema): array
     {
         return [

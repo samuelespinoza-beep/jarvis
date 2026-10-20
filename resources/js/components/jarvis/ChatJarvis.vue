@@ -56,7 +56,6 @@ const props = withDefaults(
         acta?: ContenidoResumen | null;
         escuchando?: boolean;
         documentos: ConfigDocumentos;
-        // Duración máxima de un dictado por micrófono.
         dictadoMaxSegundos?: number;
         voces: ConfigVoces;
         // Se espera antes de abrir el micrófono de la voz en vivo (pausar la reunión que se graba).
@@ -74,7 +73,6 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-    // Pide dejar el chat de la reunión terminada y pasar al chat general.
     salirDeReunion: [];
     // Avisa al empezar y al terminar la conversación por voz en vivo (para pausar la reunión).
     enVivo: [activo: boolean];
@@ -206,7 +204,6 @@ useEventListener(window, 'keydown', (evento: KeyboardEvent) => {
 
 const texto = ref('');
 const documento = ref<File | null>(null);
-// Miniatura de la imagen a punto de enviarse.
 const vistaPrevia = useObjectUrl(
     computed(() =>
         documento.value && esImagen(documento.value)
@@ -475,7 +472,6 @@ function leerUltimaRespuesta() {
 }
 
 function alPresionarTecla(evento: KeyboardEvent) {
-    // Enter envía; Shift + Enter hace un salto de línea.
     if (evento.key === 'Enter' && !evento.shiftKey) {
         evento.preventDefault();
         void mandar();
@@ -872,7 +868,6 @@ watch(
             @change="alElegirArchivo"
         />
 
-        <!-- Una sola caja: la voz en vivo, el documento, el texto y las acciones. -->
         <form
             class="flex flex-col rounded-2xl border bg-hud-superficie/30 transition-[border-color,box-shadow] focus-within:border-hud-acento"
             :class="

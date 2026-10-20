@@ -17,9 +17,6 @@ class ConsultarReuniones implements Tool
 {
     private const LIMITE = 15;
 
-    /**
-     * Get the description of the tool's purpose.
-     */
     public function description(): Stringable|string
     {
         return 'Busca reuniones del directorio grabadas con el Asistente IA. Filtra por rango de fechas y/o por '
@@ -27,9 +24,6 @@ class ConsultarReuniones implements Tool
             .'ejecutivo de cada una. Para ver el acta completa o la transcripción usa LeerReunion.';
     }
 
-    /**
-     * Execute the tool.
-     */
     public function handle(Request $request): Stringable|string
     {
         $desde = $request->string('desde')->toString();
@@ -61,9 +55,6 @@ class ConsultarReuniones implements Tool
         ]))->implode("\n\n");
     }
 
-    /**
-     * Get the tool's schema definition.
-     */
     public function schema(JsonSchema $schema): array
     {
         return [

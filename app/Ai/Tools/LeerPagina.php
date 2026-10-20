@@ -24,9 +24,6 @@ class LeerPagina implements Tool
 
     public function __construct(private Navegador $navegador = new Navegador) {}
 
-    /**
-     * Get the description of the tool's purpose.
-     */
     public function description(): Stringable|string
     {
         return 'Visita una página web pública. En modo "enlaces" devuelve los titulares o enlaces '
@@ -34,9 +31,6 @@ class LeerPagina implements Tool
             .'En modo "texto" devuelve el contenido de un artículo para poder resumirlo.';
     }
 
-    /**
-     * Execute the tool.
-     */
     public function handle(Request $request): Stringable|string
     {
         $url = $request->string('url')->trim()->toString();
@@ -79,9 +73,6 @@ class LeerPagina implements Tool
         return implode("\n", $encabezado)."\n\n".$cuerpo;
     }
 
-    /**
-     * Get the tool's schema definition.
-     */
     public function schema(JsonSchema $schema): array
     {
         return [

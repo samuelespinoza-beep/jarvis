@@ -2,17 +2,6 @@
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Default AI Provider Names
-    |--------------------------------------------------------------------------
-    |
-    | Here you may specify which of the AI providers below should be the
-    | default for AI operations when no explicit provider is provided
-    | for the operation. This should be any provider defined below.
-    |
-    */
-
     'default' => 'openai',
     'default_for_images' => 'gemini',
     'default_for_audio' => 'openai',
@@ -20,17 +9,6 @@ return [
     'default_for_embeddings' => 'openai',
     'default_for_reranking' => 'cohere',
     'default_for_classification' => 'typesafe',
-
-    /*
-    |--------------------------------------------------------------------------
-    | Caching
-    |--------------------------------------------------------------------------
-    |
-    | Below you may configure caching strategies for AI related operations
-    | such as embedding generation. You are free to adjust these values
-    | based on your application's available caching stores and needs.
-    |
-    */
 
     'caching' => [
         'embeddings' => [
@@ -40,30 +18,10 @@ return [
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Conversations
-    |--------------------------------------------------------------------------
-    |
-    | Jarvis no pide a la IA un título para cada conversación nueva (sería una
-    | llamada extra a OpenAI): usa el inicio del primer mensaje.
-    |
-    */
-
+    // Sin título generado por IA (sería una llamada extra a OpenAI): se usa el inicio del primer mensaje.
     'conversations' => [
         'generate_title' => false,
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | AI Providers
-    |--------------------------------------------------------------------------
-    |
-    | Below are each of your AI providers defined for this application. Each
-    | represents an AI provider and API key combination which can be used
-    | to perform tasks like text, image, and audio creation via agents.
-    |
-    */
 
     'providers' => [
         'anthropic' => [

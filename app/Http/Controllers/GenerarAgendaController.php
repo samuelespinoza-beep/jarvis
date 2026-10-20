@@ -14,7 +14,7 @@ use Throwable;
 /**
  * Propone la agenda de una reunión a partir de capturas, documentos o un
  * texto pegado. No guarda nada: el usuario revisa los puntos y decide si
- * reemplazan la agenda o se agregan a ella. Los archivos no se guardan.
+ * reemplazan la agenda o se agregan a ella.
  */
 class GenerarAgendaController extends Controller
 {

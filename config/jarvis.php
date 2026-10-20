@@ -2,31 +2,11 @@
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Modo escritorio
-    |--------------------------------------------------------------------------
-    |
-    | En la versión instalada (una persona en su propia PC) no hay pantalla de
-    | inicio de sesión: se entra directo con un usuario local. En desarrollo
-    | queda desactivado y se usa el login normal.
-    |
-    */
-
+    // Versión instalada (una persona en su PC): sin login, se entra con un usuario local.
     'escritorio' => (bool) env('JARVIS_ESCRITORIO', false),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Grabación
-    |--------------------------------------------------------------------------
-    |
-    | El navegador graba la reunión en fragmentos independientes de 1 minuto y
-    | sube cada uno al terminar. Cada minuto se transcribe y se resume por su
-    | cuenta (línea de tiempo). Con 32 kbps un minuto pesa ~240 KB, muy por
-    | debajo del upload_max_filesize de 2 MB que trae PHP por defecto.
-    |
-    */
-
+    // El navegador sube la reunión en fragmentos de 1 minuto. A 32 kbps cada uno pesa
+    // ~240 KB, por debajo del upload_max_filesize de 2 MB que trae PHP por defecto.
     'fragmento_segundos' => (int) env('JARVIS_FRAGMENTO_SEGUNDOS', 60),
 
     'audio_bits_por_segundo' => (int) env('JARVIS_AUDIO_BPS', 32000),
@@ -34,35 +14,15 @@ return [
     // Tamaño máximo aceptado por fragmento, en kilobytes.
     'fragmento_max_kb' => (int) env('JARVIS_FRAGMENTO_MAX_KB', 20480),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Transcripción
-    |--------------------------------------------------------------------------
-    |
-    | Cada fragmento se transcribe con OpenAI en un job de la cola, apenas
-    | llega al servidor. El modelo "diarize" separa a los hablantes.
-    |
-    */
-
+    // El modelo "diarize" separa a los hablantes.
     'transcripcion' => [
         'modelo' => env('JARVIS_MODELO_TRANSCRIPCION', 'gpt-4o-transcribe-diarize'),
         'idioma' => env('JARVIS_IDIOMA', 'es'),
         'timeout_segundos' => 300,
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Órdenes de voz (transcripción en vivo)
-    |--------------------------------------------------------------------------
-    |
-    | Mientras la reunión está abierta (grabando o en pausa), el navegador
-    | envía el micrófono directamente a OpenAI Realtime (WebRTC) y recibe el
-    | texto frase a frase para detectar órdenes como "Asistente, pausa la
-    | reunión". El texto no se muestra ni se guarda: el acta se sigue haciendo
-    | con la transcripción por fragmentos, así que este audio se paga aparte.
-    |
-    */
-
+    // Órdenes de voz: el micrófono va directo a OpenAI Realtime solo para detectar
+    // órdenes; no se guarda (el acta sale de los fragmentos), así que se paga aparte.
     'en_vivo' => [
         'habilitada' => (bool) env('JARVIS_TRANSCRIPCION_EN_VIVO', true),
         'modelo' => env('JARVIS_MODELO_EN_VIVO', 'gpt-4o-mini-transcribe'),
@@ -70,35 +30,13 @@ return [
         'segundos_llave' => 120,
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Resumen
-    |--------------------------------------------------------------------------
-    |
-    | Modelo de texto que redacta el acta. GPT-6 Luna es el más económico; si
-    | los resúmenes quedan cortos se puede subir a gpt-6.1-sol.
-    |
-    */
-
     'resumen' => [
         'modelo' => env('JARVIS_MODELO_RESUMEN', 'gpt-6-luna'),
         // Resumen corto de cada minuto mientras la reunión sigue (línea de tiempo).
         'por_tramos' => (bool) env('JARVIS_RESUMEN_POR_TRAMOS', true),
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Chat
-    |--------------------------------------------------------------------------
-    |
-    | Modelo del chat con el Asistente IA, que puede buscar en internet, leer páginas,
-    | ver videos de YouTube y consultar las reuniones guardadas. También se le
-    | puede adjuntar un documento o una imagen para resumirlo o hacerle
-    | preguntas: OpenAI lee el archivo directamente, sin extraer el texto en el
-    | servidor.
-    |
-    */
-
+    // Los documentos e imágenes adjuntos los lee OpenAI directamente, sin extraer texto en el servidor.
     'chat' => [
         'modelo' => env('JARVIS_MODELO_CHAT', 'gpt-6-luna'),
 
@@ -108,22 +46,10 @@ return [
 
         'documento_formatos' => ['pdf', 'docx', 'txt', 'md', 'csv'],
 
-        // Imágenes (capturas, gráficos, fotos): el modelo las ve directamente.
         'imagen_formatos' => ['jpg', 'jpeg', 'png', 'webp'],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Conversación por voz en vivo
-    |--------------------------------------------------------------------------
-    |
-    | Botón "En vivo" del chat: se conversa por voz con el asistente en tiempo
-    | real (OpenAI Realtime por WebRTC, directo desde el navegador). Responde
-    | hablando, se le puede interrumpir y usa las mismas herramientas que el
-    | chat, que ejecuta el servidor. Se cobra por minuto de audio.
-    |
-    */
-
+    // Botón "En vivo" del chat: conversación por voz con OpenAI Realtime. Se cobra por minuto de audio.
     'conversacion' => [
         'modelo' => env('JARVIS_MODELO_CONVERSACION', 'gpt-realtime-2.1-mini'),
         // Lo que dura la llave temporal para conectarse (la conversación sigue abierta después).
@@ -149,16 +75,7 @@ return [
         ],
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Dictado
-    |--------------------------------------------------------------------------
-    |
-    | Botón de micrófono del chat: el navegador graba lo que dice el usuario,
-    | el servidor lo transcribe y el texto queda en la caja para enviarlo.
-    |
-    */
-
+    // Botón de micrófono del chat: se transcribe en el servidor y el texto queda en la caja.
     'dictado' => [
         'modelo' => env('JARVIS_MODELO_DICTADO', 'gpt-4o-transcribe'),
         // Pasado este tiempo el navegador corta la grabación y la transcribe.
@@ -166,16 +83,7 @@ return [
         'max_kb' => 5120,
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Voz
-    |--------------------------------------------------------------------------
-    |
-    | El Asistente IA puede leer en voz alta sus respuestas del chat (texto a voz de
-    | OpenAI). Solo se genera audio cuando se pide, y se cobra por carácter.
-    |
-    */
-
+    // Lectura en voz alta de las respuestas del chat; solo se genera cuando se pide y se cobra por carácter.
     'voz' => [
         'modelo' => env('JARVIS_MODELO_VOZ', 'gpt-4o-mini-tts'),
         // Voz por defecto; cada usuario puede elegir otra en el chat.
@@ -183,7 +91,7 @@ return [
         'instrucciones' => 'Habla en español latinoamericano neutro, con tono profesional, tranquilo y claro. '
             .'Ritmo pausado y pronunciación clara de cifras y fechas.',
 
-        // Voces de OpenAI (todas probadas con gpt-4o-mini-tts) y cómo suenan.
+        // Todas probadas con gpt-4o-mini-tts.
         'voces' => [
             'onyx' => 'Masculina, grave',
             'ash' => 'Masculina, clara',

@@ -96,9 +96,6 @@ export function useDictado(maxSegundos: number) {
         }
     }
 
-    /**
-     * Empieza a grabar. Al terminar, llama a `entregar` con el texto dictado.
-     */
     async function iniciar(entregar: (texto: string) => void) {
         if (estado.value !== 'inactivo') {
             return;
@@ -168,7 +165,6 @@ export function useDictado(maxSegundos: number) {
         }
     }
 
-    /** Deja de grabar sin transcribir. */
     function cancelar() {
         descartar = true;
         terminar();

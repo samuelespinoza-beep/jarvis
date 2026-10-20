@@ -17,9 +17,6 @@ use Illuminate\Support\Facades\Storage;
 
 class ReunionController extends Controller
 {
-    /**
-     * La agenda: hasta 20 puntos cortos, en orden.
-     */
     private const REGLAS_AGENDA = [
         'agenda' => ['nullable', 'array', 'max:20'],
         'agenda.*' => ['nullable', 'string', 'max:200'],

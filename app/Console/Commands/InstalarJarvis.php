@@ -20,7 +20,7 @@ class InstalarJarvis extends Command
         {--env= : Ruta del .env (por defecto, el de la app)}
         {--plantilla= : Plantilla para crear el .env (por defecto, .env.escritorio)}';
 
-    protected $description = 'Configura Jarvis en esta PC (versión instalada)';
+    protected $description = 'Configura el Asistente IA en esta PC (versión instalada)';
 
     public function handle(): int
     {
@@ -67,16 +67,15 @@ class InstalarJarvis extends Command
         $this->call('migrate', ['--force' => true]);
         $usuario = SesionEscritorio::usuarioLocal();
 
-        // La primera vez, para no empezar sin ninguna reunión.
         if ($ejemplo = app(ReunionDeEjemplo::class)->importarSiEstaVacia($usuario)) {
             $this->info("Se cargó la reunión de ejemplo «{$ejemplo->titulo}».");
         }
 
         if ($this->valor($env, 'OPENAI_API_KEY') === '') {
-            $this->warn('Falta la llave de OpenAI: Jarvis no podrá transcribir ni responder hasta que se configure.');
+            $this->warn('Falta la llave de OpenAI: el Asistente IA no podrá transcribir ni responder hasta que se configure.');
         }
 
-        $this->info('Jarvis quedó configurado.');
+        $this->info('El Asistente IA quedó configurado.');
 
         return self::SUCCESS;
     }

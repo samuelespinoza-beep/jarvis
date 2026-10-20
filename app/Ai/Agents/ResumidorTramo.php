@@ -18,9 +18,6 @@ class ResumidorTramo implements Agent, HasStructuredOutput
 {
     use Promptable;
 
-    /**
-     * Get the instructions that the agent should follow.
-     */
     public function instructions(): Stringable|string
     {
         return <<<'TXT'
@@ -41,9 +38,6 @@ class ResumidorTramo implements Agent, HasStructuredOutput
         TXT;
     }
 
-    /**
-     * Get the agent's structured output schema definition.
-     */
     public function schema(JsonSchema $schema): array
     {
         return [

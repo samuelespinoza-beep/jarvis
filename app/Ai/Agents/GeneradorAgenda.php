@@ -23,9 +23,6 @@ class GeneradorAgenda implements Agent, HasStructuredOutput
 
     public const MAX_CARACTERES = 200;
 
-    /**
-     * Get the instructions that the agent should follow.
-     */
     public function instructions(): Stringable|string
     {
         $maxPuntos = self::MAX_PUNTOS;
@@ -51,9 +48,6 @@ class GeneradorAgenda implements Agent, HasStructuredOutput
         TXT;
     }
 
-    /**
-     * Get the agent's structured output schema definition.
-     */
     public function schema(JsonSchema $schema): array
     {
         return [

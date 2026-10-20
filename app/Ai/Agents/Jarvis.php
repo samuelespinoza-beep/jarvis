@@ -276,9 +276,6 @@ class Jarvis implements Agent, Conversational, HasTools
         return $this->reunion?->titulo ?: 'Sin título';
     }
 
-    /**
-     * Get the tools available to the agent.
-     */
     public function tools(): iterable
     {
         return [

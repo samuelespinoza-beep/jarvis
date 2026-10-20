@@ -384,7 +384,6 @@ watch(
         <div
             class="relative flex flex-1 flex-col overflow-hidden rounded-xl border border-hud-acento/20 bg-hud-fondo text-hud-texto lg:flex-row"
         >
-            <!-- Rejilla de fondo estilo HUD -->
             <div
                 class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(var(--hud-acento-rgb),0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(var(--hud-acento-rgb),0.04)_1px,transparent_1px)] bg-[size:32px_32px]"
             />
@@ -392,7 +391,6 @@ watch(
             <section
                 class="relative flex flex-1 flex-col items-center justify-center gap-6 p-6 pt-20"
             >
-                <!-- Un solo botón para empezar y terminar la reunión -->
                 <div class="absolute top-4 left-4 z-10">
                     <Button
                         v-if="!reunionAbierta"
@@ -563,7 +561,7 @@ watch(
             </section>
 
             <aside
-                class="relative flex w-full flex-col gap-4 border-t border-hud-acento/20 bg-hud-superficie/10 p-5 lg:w-[32rem] lg:border-t-0 xl:w-[38rem] 2xl:w-[44rem] lg:border-l"
+                class="relative flex w-full flex-col gap-4 border-t border-hud-acento/20 bg-hud-superficie/10 p-5 lg:w-[32rem] lg:border-t-0 lg:border-l xl:w-[38rem] 2xl:w-[44rem]"
             >
                 <div
                     class="flex gap-1 border-b border-hud-acento/20"

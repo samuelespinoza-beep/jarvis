@@ -21,8 +21,6 @@ class DocumentoChat
     public const TIPOS = ['stored-document', 'stored-image'];
 
     /**
-     * Todos los formatos que se pueden adjuntar.
-     *
      * @return list<string>
      */
     public static function formatos(): array
@@ -51,8 +49,6 @@ class DocumentoChat
     }
 
     /**
-     * Reglas de validación de un archivo adjunto.
-     *
      * @return list<string>
      */
     public static function reglas(): array

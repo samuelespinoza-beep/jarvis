@@ -107,7 +107,6 @@ function dibujar(tiempo: number) {
     ctx.save();
     ctx.translate(r, r);
 
-    // Resplandor de fondo.
     const halo = ctx.createRadialGradient(0, 0, r * 0.05, 0, 0, r * 0.95);
     halo.addColorStop(0, acento(0.18 + nivelSuavizado * 0.6));
     halo.addColorStop(1, `rgba(${acentoRgb}, 0)`);
@@ -137,10 +136,9 @@ function dibujar(tiempo: number) {
 
     anillo(ctx, r * 0.48, r * 0.012, acento(0.7), 4, 0.08, -t * 0.6);
 
-    // Núcleo.
     const radioNucleo = r * (0.3 + nivelSuavizado * 0.18 + respiracion);
     const nucleo = ctx.createRadialGradient(0, 0, 0, 0, 0, radioNucleo);
-    // Centro claro y cálido, como el reactor de Iron Man, que se funde en el acento.
+    // Centro claro y cálido que se funde en el acento.
     nucleo.addColorStop(0, `rgba(255, 237, 213, ${0.95 * intensidad})`);
     nucleo.addColorStop(0.35, acento(0.85));
     nucleo.addColorStop(1, `rgba(${acentoRgb}, 0)`);

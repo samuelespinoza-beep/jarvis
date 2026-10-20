@@ -60,9 +60,6 @@ class ResumenTest extends TestCase
         ];
     }
 
-    /**
-     * Reunión ya transcrita, lista para resumir.
-     */
     private function reunionTranscrita(?string $titulo = null, bool $conTexto = true): Reunion
     {
         $reunion = Reunion::create([

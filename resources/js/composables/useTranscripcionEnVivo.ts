@@ -211,9 +211,6 @@ export function useTranscripcionEnVivo(opciones: Opciones = {}) {
         await abrir(numeroSesion);
     }
 
-    /**
-     * Empieza a transcribir en vivo el micrófono durante la reunión abierta.
-     */
     async function conectar(reunionId: string, stream: MediaStream) {
         desconectar();
         reunionActual = reunionId;
