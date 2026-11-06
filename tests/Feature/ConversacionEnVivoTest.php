@@ -80,6 +80,32 @@ class ConversacionEnVivoTest extends TestCase
         });
     }
 
+    public function test_in_room_mode_the_app_decides_when_the_voice_answers_or_stops()
+    {
+        Http::fake(['api.openai.com/v1/realtime/client_secrets' => Http::response(['value' => 'ek_sala', 'expires_at' => 1])]);
+        $this->actingAs(User::factory()->create());
+
+        // OpenAI no responde ni se corta solo: la app responde solo a "Asistente, …".
+        $this->postJson(route('chat.en-vivo.sesion'), ['modo' => 'sala'])
+            ->assertOk()
+            ->assertJsonPath('modo', 'sala')
+            // El micrófono queda abierto para poder decir "Asistente, para".
+            ->assertJsonPath('interrumpir', true);
+
+        Http::assertSent(function (PeticionHttp $peticion) {
+            $entrada = $peticion['session']['audio']['input'];
+
+            return $entrada['turn_detection']['create_response'] === false
+                && $entrada['turn_detection']['interrupt_response'] === false
+                && $entrada['transcription']['prompt'] === 'Asistente'
+                && str_contains($peticion['session']['instructions'], 'Modo sala');
+        });
+
+        // Sin modo, sigue como conversación personal.
+        $this->postJson(route('chat.en-vivo.sesion'))->assertJsonPath('modo', 'personal');
+        $this->postJson(route('chat.en-vivo.sesion'), ['modo' => 'otro'])->assertUnprocessable();
+    }
+
     public function test_runs_the_tools_the_voice_model_asks_for()
     {
         $usuario = User::factory()->create();

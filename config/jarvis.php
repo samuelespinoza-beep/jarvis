@@ -88,8 +88,8 @@ return [
         'modelo' => env('JARVIS_MODELO_VOZ', 'gpt-4o-mini-tts'),
         // Voz por defecto; cada usuario puede elegir otra en el chat.
         'voz' => env('JARVIS_VOZ', 'onyx'),
-        'instrucciones' => 'Habla en español latinoamericano neutro, con tono profesional, tranquilo y claro. '
-            .'Ritmo pausado y pronunciación clara de cifras y fechas.',
+        // Instrucciones de la voz; se editan en resources/prompts/voz.txt.
+        'instrucciones' => trim(file_get_contents(resource_path('prompts/voz.txt'))),
 
         // Todas probadas con gpt-4o-mini-tts.
         'voces' => [

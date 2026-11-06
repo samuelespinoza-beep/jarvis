@@ -2,6 +2,8 @@ export type OrdenVoz =
     | { tipo: 'pausar' }
     | { tipo: 'reanudar' }
     | { tipo: 'terminar' }
+    // Que deje de hablar ("Asistente, para"); solo tiene sentido en la conversación en vivo.
+    | { tipo: 'detener' }
     | { tipo: 'pregunta'; texto: string };
 
 // "Asistente" (o "Asistente IA") al inicio de la frase. Como "asistente" es una
@@ -15,27 +17,35 @@ const CORTESIA = '(?: por favor)?';
 
 // Las órdenes deben ser la frase completa ("Asistente, pausa la reunión"), para
 // que una pregunta que empiece con esas palabras no la active por error.
-const ORDENES: { tipo: 'pausar' | 'reanudar' | 'terminar'; patron: RegExp }[] =
-    [
-        {
-            tipo: 'pausar',
-            patron: new RegExp(
-                `^(?:pausa|pausar|pausala|pon(?:er)? (?:en )?pausa|haz una pausa)${OBJETO}${CORTESIA}$`,
-            ),
-        },
-        {
-            tipo: 'reanudar',
-            patron: new RegExp(
-                `^(?:reanuda|reanudar|reanudala|continua|continuar|sigue|seguir|retoma|retomar|quita la pausa)(?: con)?${OBJETO}(?: grabando)?${CORTESIA}$`,
-            ),
-        },
-        {
-            tipo: 'terminar',
-            patron: new RegExp(
-                `^(?:termina|terminar|terminala|finaliza|finalizar|cierra|cerrar|acaba|acabar)${OBJETO}${CORTESIA}$`,
-            ),
-        },
-    ];
+const ORDENES: {
+    tipo: 'pausar' | 'reanudar' | 'terminar' | 'detener';
+    patron: RegExp;
+}[] = [
+    {
+        tipo: 'pausar',
+        patron: new RegExp(
+            `^(?:pausa|pausar|pausala|pon(?:er)? (?:en )?pausa|haz una pausa)${OBJETO}${CORTESIA}$`,
+        ),
+    },
+    {
+        tipo: 'reanudar',
+        patron: new RegExp(
+            `^(?:reanuda|reanudar|reanudala|continua|continuar|sigue|seguir|retoma|retomar|quita la pausa)(?: con)?${OBJETO}(?: grabando)?${CORTESIA}$`,
+        ),
+    },
+    {
+        tipo: 'terminar',
+        patron: new RegExp(
+            `^(?:termina|terminar|terminala|finaliza|finalizar|cierra|cerrar|acaba|acabar)${OBJETO}${CORTESIA}$`,
+        ),
+    },
+    {
+        tipo: 'detener',
+        patron: new RegExp(
+            `^(?:para|parar|paralo|detente|detenerte|alto|basta|silencio|callate|calla|espera|stop|ya esta|suficiente)(?: ya)?${CORTESIA}$`,
+        ),
+    },
+];
 
 function normalizar(texto: string): string {
     return texto

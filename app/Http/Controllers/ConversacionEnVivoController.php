@@ -68,9 +68,11 @@ class ConversacionEnVivoController extends Controller
             'voz' => ['nullable', 'string', Rule::in(array_keys(config('jarvis.voz.voces')))],
             'reunion_id' => ['nullable', 'string', Rule::exists('reuniones', 'id')],
             'conversacion_id' => ['nullable', 'string', 'max:36'],
+            'modo' => ['nullable', Rule::in(['personal', 'sala'])],
         ]);
 
         $config = config('jarvis.conversacion');
+        $sala = ($datos['modo'] ?? 'personal') === 'sala';
         $reunion = isset($datos['reunion_id']) ? Reunion::query()->find($datos['reunion_id']) : null;
         $conversacionId = $this->conversacionDelChat($request, $reunion, $datos['conversacion_id'] ?? null);
         $voz = $datos['voz'] ?? config('jarvis.voz.voz');
@@ -85,15 +87,17 @@ class ConversacionEnVivoController extends Controller
                     'session' => [
                         'type' => 'realtime',
                         'model' => $config['modelo'],
-                        'instructions' => $this->instrucciones($reunion).$this->historial($conversacionId),
+                        'instructions' => $this->instrucciones($reunion).($sala ? $this->instruccionesSala() : '').$this->historial($conversacionId),
                         'audio' => [
                             'input' => [
                                 'noise_reduction' => ['type' => $config['microfono']],
                                 'transcription' => [
                                     'model' => config('jarvis.en_vivo.modelo'),
                                     'language' => config('jarvis.transcripcion.idioma'),
+                                    // Ayuda a reconocer "Asistente" al inicio de la frase (modo sala).
+                                    ...($sala ? ['prompt' => 'Asistente'] : []),
                                 ],
-                                'turn_detection' => $this->deteccionDeTurnos($config['deteccion']),
+                                'turn_detection' => $this->deteccionDeTurnos($config['deteccion'], $sala),
                             ],
                             'output' => ['voice' => $voz],
                         ],
@@ -111,7 +115,9 @@ class ConversacionEnVivoController extends Controller
             'llave' => $respuesta->json('value'),
             'voz' => $voz,
             'minutos_inactividad' => $config['minutos_inactividad'],
-            'interrumpir' => $config['deteccion']['interrumpir'],
+            // En modo sala el micrófono queda siempre abierto: para cortarlo se dice "Asistente, para".
+            'interrumpir' => $sala || $config['deteccion']['interrumpir'],
+            'modo' => $sala ? 'sala' : 'personal',
         ]);
     }
 
@@ -244,6 +250,22 @@ class ConversacionEnVivoController extends Controller
     }
 
     /**
+     * Lo propio de una reunión con varias personas en la sala.
+     */
+    private function instruccionesSala(): string
+    {
+        return <<<'TXT'
+
+        Modo sala (reunión con varias personas):
+        - Escuchas toda la conversación de la sala como contexto, pero solo hablas cuando alguien se
+          dirige a ti empezando con "Asistente". Lo demás es conversación entre ellos: no lo respondas.
+        - Cuando te pidan responder, contesta a la última frase que empezó con "Asistente". Puedes usar
+          lo que se dijo antes en la sala si sirve para responder ("lo que dijo Rubén", "lo anterior").
+        - Si te piden parar o callar, no digas nada más.
+        TXT;
+    }
+
+    /**
      * Lo último del chat (escrito o por voz, con los resúmenes de documentos),
      * para que la voz siga la conversación en vez de empezar sin memoria.
      */
@@ -314,12 +336,18 @@ class ConversacionEnVivoController extends Controller
      * fuera golpes, eco del parlante y ruido de fondo; semantic_vad decide por
      * el sentido de la frase, pero se dispara con cualquier sonido.
      *
+     * En modo sala OpenAI no responde ni se corta solo: la app decide, según
+     * si la frase va dirigida al asistente ("Asistente, …"). Así no contesta a
+     * lo que conversan los demás ni lo corta su propio eco.
+     *
      * @param  array{tipo: string, umbral: float, relleno_ms: int, silencio_ms: int, interrumpir: bool}  $deteccion
      * @return array<string, mixed>
      */
-    private function deteccionDeTurnos(array $deteccion): array
+    private function deteccionDeTurnos(array $deteccion, bool $sala = false): array
     {
-        $comun = ['interrupt_response' => $deteccion['interrumpir'], 'create_response' => true];
+        $comun = $sala
+            ? ['interrupt_response' => false, 'create_response' => false]
+            : ['interrupt_response' => $deteccion['interrumpir'], 'create_response' => true];
 
         if ($deteccion['tipo'] === 'semantic_vad') {
             return ['type' => 'semantic_vad', 'eagerness' => 'low', ...$comun];

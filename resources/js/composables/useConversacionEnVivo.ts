@@ -7,6 +7,7 @@ import {
     sesion as abrirSesion,
 } from '@/actions/App/Http/Controllers/ConversacionEnVivoController';
 import { ACTIVIDADES } from '@/composables/useChat';
+import { interpretarOrdenVoz } from '@/lib/ordenesVoz';
 import { tokenXsrf } from '@/lib/xsrf';
 
 export type EstadoEnVivo =
@@ -39,8 +40,12 @@ type EventoRealtime = {
     error?: { message?: string };
 };
 
+export type ModoEnVivo = 'personal' | 'sala';
+
 type Opciones = {
     voz: string;
+    // "sala": reunión con varias personas; solo responde si le dicen "Asistente, …".
+    modo?: ModoEnVivo;
     reunionId: string | null;
     // Se lee cada vez: el chat puede crear su conversación en medio de la voz (al adjuntar un documento).
     conversacionId: () => string | null;
@@ -57,6 +62,14 @@ const ESPERA_GUARDADO_MS = 1500;
 
 // Lo que se le pasa a la voz de una respuesta escrita (el resumen de un documento, por ejemplo).
 const MAX_CARACTERES_RESPUESTA = 6000;
+
+// Modo sala: lo que se oye hasta este tiempo después de que el asistente calla
+// es el eco de su voz en la sala, no alguien hablando.
+const ECO_MS = 1500;
+
+// Modo sala: cuántas frases de la conversación de la sala se le dejan como
+// contexto (cada respuesta las vuelve a procesar y se cobran).
+const MAX_CONTEXTO_SALA = 30;
 
 const URL_LLAMADAS = 'https://api.openai.com/v1/realtime/calls';
 
@@ -84,7 +97,13 @@ export function useConversacionEnVivo(
     // mientras habla: así su propia voz (el eco de los parlantes) no vuelve a
     // entrar como si la hubiera dicho el usuario.
     const interrumpible = ref(true);
+    // Modo sala: escucha toda la reunión, pero solo habla cuando le dicen "Asistente, …".
+    const sala = ref(false);
     let vozSonando = false;
+    let finVozEn = 0;
+    // Si se pidió parar mientras buscaba: al llegar el resultado no se pone a hablar.
+    let callarTrasHerramienta = false;
+    const contextoSala: string[] = [];
     let finDeVoz: number | undefined;
 
     let conexion: RTCPeerConnection | null = null;
@@ -367,6 +386,100 @@ export function useConversacionEnVivo(
         pedirRespuesta(true);
     }
 
+    function borrarItem(id: string) {
+        enviar({ type: 'conversation.item.delete', item_id: id });
+    }
+
+    /**
+     * Corta lo que está diciendo (botón "Detener", tecla Esc o "Asistente,
+     * para"). Lo que alcanzó a decir queda en el chat.
+     */
+    function detenerRespuesta() {
+        if (!canal) {
+            return;
+        }
+
+        ultimaActividad = Date.now();
+        respuestaPendiente = false;
+        relevoPendiente = false;
+
+        if (herramientasPendientes > 0) {
+            callarTrasHerramienta = true;
+        }
+
+        if (respuestaEnCurso) {
+            enviar({ type: 'response.cancel' });
+        }
+
+        if (vozSonando) {
+            enviar({ type: 'output_audio_buffer.clear' });
+        }
+
+        itemsDeLaRespuesta.forEach((id) => {
+            if (mensajes.value.some((m) => m.id === id && m.contenido.trim())) {
+                terminoFrase(id);
+            }
+        });
+
+        actividad.value = null;
+
+        if (['pensando', 'hablando'].includes(estado.value)) {
+            estado.value = 'escuchando';
+        }
+    }
+
+    /**
+     * Modo sala: decide qué hacer con cada frase de la reunión. Solo responde
+     * si empieza con "Asistente, …"; lo demás queda como contexto, y el eco de
+     * su propia voz se descarta.
+     */
+    function atenderEnSala(id: string, texto: string) {
+        const orden = texto ? interpretarOrdenVoz(texto) : null;
+
+        if (!orden) {
+            const eco = vozSonando || Date.now() - finVozEn < ECO_MS;
+
+            if (eco || !texto) {
+                borrarItem(id);
+
+                return;
+            }
+
+            contextoSala.push(id);
+
+            if (contextoSala.length > MAX_CONTEXTO_SALA) {
+                borrarItem(contextoSala.shift()!);
+            }
+
+            return;
+        }
+
+        switch (orden.tipo) {
+            case 'detener':
+                borrarItem(id);
+                detenerRespuesta();
+                break;
+            case 'terminar':
+                void terminar();
+                break;
+            // La reunión ya está en pausa durante la conversación en vivo.
+            case 'pausar':
+            case 'reanudar':
+                borrarItem(id);
+                break;
+            case 'pregunta':
+                // Una pregunta nueva corta la respuesta anterior.
+                if (respuestaEnCurso || vozSonando || herramientasPendientes) {
+                    detenerRespuesta();
+                }
+
+                mensaje(id, 'usuario').contenido = texto;
+                terminoFrase(id);
+                pedirRespuesta();
+                break;
+        }
+    }
+
     async function usarHerramienta(evento: EventoRealtime) {
         herramientasPendientes++;
         estado.value = 'pensando';
@@ -405,10 +518,16 @@ export function useConversacionEnVivo(
         });
         herramientasPendientes--;
 
-        // Con todos los resultados listos, el modelo sigue hablando.
+        // Con todos los resultados listos, el modelo sigue hablando (salvo que le pidieran parar).
         if (herramientasPendientes === 0) {
             actividad.value = null;
-            pedirRespuesta();
+
+            if (callarTrasHerramienta) {
+                callarTrasHerramienta = false;
+                estado.value = 'escuchando';
+            } else {
+                pedirRespuesta();
+            }
         }
     }
 
@@ -424,21 +543,27 @@ export function useConversacionEnVivo(
 
                 break;
             // Al empezar a hablar se reserva el mensaje, así queda antes de la respuesta.
+            // En modo sala no: casi todo lo que se dice no va dirigido al asistente.
             case 'input_audio_buffer.speech_started':
-                if (evento.item_id) {
+                if (evento.item_id && !sala.value) {
                     mensaje(evento.item_id, 'usuario');
                 }
 
                 break;
             case 'conversation.item.input_audio_transcription.delta':
-                if (evento.item_id) {
+                if (evento.item_id && !sala.value) {
                     mensaje(evento.item_id, 'usuario').contenido +=
                         evento.delta ?? '';
                 }
 
                 break;
             case 'conversation.item.input_audio_transcription.completed':
-                if (evento.item_id) {
+                if (evento.item_id && sala.value) {
+                    atenderEnSala(
+                        evento.item_id,
+                        (evento.transcript ?? '').trim(),
+                    );
+                } else if (evento.item_id) {
                     const texto = (evento.transcript ?? '').trim();
 
                     // Un golpe o eco que no resultó en palabras no queda como mensaje.
@@ -516,6 +641,7 @@ export function useConversacionEnVivo(
                     estado.value = 'escuchando';
                 }
 
+                finVozEn = Date.now();
                 // Se espera un poco: la sala sigue sonando un instante después de que calla.
                 window.clearTimeout(finDeVoz);
                 finDeVoz = window.setTimeout(() => {
@@ -595,6 +721,8 @@ export function useConversacionEnVivo(
         descartados.clear();
         relevoPendiente = false;
         respuestaRelevo = null;
+        callarTrasHerramienta = false;
+        contextoSala.length = 0;
         actividad.value = null;
     }
 
@@ -620,18 +748,21 @@ export function useConversacionEnVivo(
                 url: abrirSesion.url(),
                 data: {
                     voz: datos.voz,
+                    modo: datos.modo ?? 'personal',
                     reunion_id: datos.reunionId,
                     conversacion_id: datos.conversacionId(),
                 },
                 headers: { Accept: 'application/json' },
             });
-            const { llave, minutos_inactividad, interrumpir } = enJson<{
+            const { llave, minutos_inactividad, interrumpir, modo } = enJson<{
                 llave: string;
                 minutos_inactividad: number;
                 interrumpir: boolean;
+                modo: ModoEnVivo;
             }>(respuesta);
             minutosInactividad = minutos_inactividad;
             interrumpible.value = interrumpir;
+            sala.value = modo === 'sala';
 
             if (numeroSesion !== sesion) {
                 return;
@@ -840,6 +971,8 @@ export function useConversacionEnVivo(
         terminar,
         silenciado,
         interrumpible,
+        sala,
+        detenerRespuesta,
         alternarSilencio,
         avisarEnvioEscrito,
         contarMensajeEscrito,

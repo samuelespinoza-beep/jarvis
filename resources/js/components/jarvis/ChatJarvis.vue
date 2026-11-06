@@ -5,6 +5,7 @@ import {
     ClipboardList,
     FileText,
     AudioLines,
+    Hand,
     Check,
     ChevronDown,
     LoaderCircle,
@@ -98,6 +99,33 @@ const enVivo = useConversacionEnVivo(async (id) => {
 
 const conversandoEnVivo = computed(() => enVivo.estado.value !== 'apagado');
 
+// Modo sala para la conversación en vivo: solo responde si le dicen "Asistente, …".
+const PREFERENCIA_SALA = 'jarvis.modo-sala';
+const modoSala = ref(leerPreferencia(PREFERENCIA_SALA) === '1');
+
+function leerPreferencia(clave: string): string | null {
+    try {
+        return localStorage.getItem(clave);
+    } catch {
+        return null;
+    }
+}
+
+function alternarModoSala() {
+    modoSala.value = !modoSala.value;
+
+    try {
+        localStorage.setItem(PREFERENCIA_SALA, modoSala.value ? '1' : '0');
+    } catch {
+        // Sin almacenamiento la preferencia solo dura mientras la página esté abierta.
+    }
+}
+
+// Se puede cortar la respuesta mientras busca o mientras habla.
+const puedeDetener = computed(() =>
+    ['pensando', 'hablando'].includes(enVivo.estado.value),
+);
+
 const textoEnVivo = computed(() =>
     enviando.value && enVivo.estado.value === 'escuchando'
         ? 'Respondiendo por escrito… en unos segundos te lo comento.'
@@ -106,11 +134,15 @@ const textoEnVivo = computed(() =>
           : {
                 apagado: '',
                 conectando: 'Conectando…',
-                escuchando: 'Te escucho. Habla cuando quieras.',
+                escuchando: enVivo.sala.value
+                    ? 'Escuchando la sala. Di «Asistente, …» para preguntarle.'
+                    : 'Te escucho. Habla cuando quieras.',
                 pensando: enVivo.actividad.value ?? 'Pensando…',
-                hablando: enVivo.interrumpible.value
-                    ? 'Respondiendo… (puedes interrumpirlo hablando)'
-                    : 'Respondiendo… (te escucho cuando termine)',
+                hablando: enVivo.sala.value
+                    ? 'Respondiendo… (di «Asistente, para» o pulsa Detener)'
+                    : enVivo.interrumpible.value
+                      ? 'Respondiendo… (puedes interrumpirlo hablando)'
+                      : 'Respondiendo… (pulsa Detener o Esc para cortarlo)',
                 guardando: 'Guardando la conversación en el chat…',
             }[enVivo.estado.value],
 );
@@ -122,6 +154,7 @@ async function hablarEnVivo() {
     await props.prepararEnVivo?.();
     await enVivo.iniciar({
         voz: voz.voz.value,
+        modo: modoSala.value ? 'sala' : 'personal',
         reunionId: props.reunionId,
         conversacionId: () => conversacionId.value,
         alCrearConversacion: (id) => {
@@ -189,6 +222,14 @@ function alEnviarFormulario() {
 
 // Mientras se dicta no hay caja de texto con foco: el teclado se escucha en la ventana.
 useEventListener(window, 'keydown', (evento: KeyboardEvent) => {
+    // Esc corta lo que está diciendo la voz en vivo.
+    if (evento.key === 'Escape' && puedeDetener.value) {
+        evento.preventDefault();
+        enVivo.detenerRespuesta();
+
+        return;
+    }
+
     if (dictado.estado.value !== 'grabando') {
         return;
     }
@@ -565,6 +606,20 @@ watch(
                             No lee solo mientras se graba una reunión.
                         </p>
                         <DropdownMenuSeparator />
+                        <DropdownMenuCheckboxItem
+                            :model-value="modoSala"
+                            :disabled="conversandoEnVivo"
+                            @update:model-value="alternarModoSala"
+                            @select.prevent
+                        >
+                            Modo sala (conversación en vivo)
+                        </DropdownMenuCheckboxItem>
+                        <p class="px-2 pb-1 text-xs text-hud-suave">
+                            Para reuniones con varias personas: escucha a todos,
+                            pero solo responde si le dicen «Asistente, …». Se
+                            aplica al iniciar la conversación en vivo.
+                        </p>
+                        <DropdownMenuSeparator />
                         <DropdownMenuLabel>
                             Voz (al elegir, suena una muestra)
                         </DropdownMenuLabel>
@@ -903,7 +958,7 @@ watch(
                     <p
                         class="text-[11px] font-semibold tracking-[0.15em] text-hud-acento-texto uppercase"
                     >
-                        En vivo
+                        {{ enVivo.sala.value ? 'En vivo · Sala' : 'En vivo' }}
                     </p>
                     <p
                         class="flex items-center gap-1.5 truncate text-xs text-hud-suave"
@@ -950,6 +1005,16 @@ watch(
                 >
                     <MicOff v-if="enVivo.silenciado.value" class="size-3.5" />
                     <Mic v-else class="size-3.5" />
+                </button>
+                <button
+                    v-if="puedeDetener"
+                    type="button"
+                    class="flex shrink-0 items-center gap-1.5 rounded-full border border-hud-acento/40 bg-white/60 px-3 py-1 text-xs font-medium text-hud-acento-texto transition-colors hover:bg-hud-acento/10"
+                    title="Detener la respuesta (Esc)"
+                    @click="enVivo.detenerRespuesta"
+                >
+                    <Hand class="size-3.5" />
+                    Detener
                 </button>
                 <button
                     type="button"
