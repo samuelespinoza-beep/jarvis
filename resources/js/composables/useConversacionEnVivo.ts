@@ -8,6 +8,7 @@ import {
 } from '@/actions/App/Http/Controllers/ConversacionEnVivoController';
 import { ACTIVIDADES } from '@/composables/useChat';
 import { interpretarOrdenVoz } from '@/lib/ordenesVoz';
+import { esRuido } from '@/lib/ruidoVoz';
 import { tokenXsrf } from '@/lib/xsrf';
 
 export type EstadoEnVivo =
@@ -465,12 +466,12 @@ export function useConversacionEnVivo(
      * su propia voz se descarta.
      */
     function atenderEnSala(id: string, texto: string) {
-        const orden = texto ? interpretarOrdenVoz(texto) : null;
+        const orden = esRuido(texto) ? null : interpretarOrdenVoz(texto);
 
         if (!orden) {
             const eco = vozSonando || Date.now() - finVozEn < ECO_MS;
 
-            if (eco || !texto) {
+            if (eco || esRuido(texto)) {
                 borrarItem(id);
 
                 return;
@@ -574,15 +575,11 @@ export function useConversacionEnVivo(
 
                 break;
             // Al empezar a hablar se reserva el mensaje, así queda antes de la respuesta.
-            // En modo sala no: casi todo lo que se dice no va dirigido al asistente.
-            case 'input_audio_buffer.speech_started':
-                if (evento.item_id && !sala.value) {
-                    mensaje(evento.item_id, 'usuario');
-                }
-
-                break;
+            // El mensaje del usuario aparece con el primer texto, no al detectar
+            // voz: un ruido no deja un "…" en el chat. La respuesta se pide recién
+            // con la frase completa, así que queda igual antes de la respuesta.
             case 'conversation.item.input_audio_transcription.delta':
-                if (evento.item_id && !sala.value) {
+                if (evento.item_id && !sala.value && evento.delta?.trim()) {
                     mensaje(evento.item_id, 'usuario').contenido +=
                         evento.delta ?? '';
                 }
@@ -597,12 +594,14 @@ export function useConversacionEnVivo(
                 } else if (evento.item_id) {
                     const texto = (evento.transcript ?? '').trim();
 
-                    // Un golpe o eco que no resultó en palabras no queda como mensaje.
-                    if (texto) {
+                    // Un golpe, eco o frase inventada con el ruido no queda ni se responde.
+                    if (esRuido(texto)) {
+                        quitarMensaje(evento.item_id);
+                        borrarItem(evento.item_id);
+                    } else {
                         mensaje(evento.item_id, 'usuario').contenido = texto;
                         terminoFrase(evento.item_id);
-                    } else {
-                        quitarMensaje(evento.item_id);
+                        pedirRespuesta();
                     }
                 }
 

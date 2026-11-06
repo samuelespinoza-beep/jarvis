@@ -92,7 +92,9 @@ class ConversacionEnVivoTest extends TestCase
             ->assertJsonPath('deteccion.interrupt_response', true)
             ->assertJsonPath('umbral_hablando', 0.85);
 
-        Http::assertSent(fn (PeticionHttp $peticion) => $peticion['session']['audio']['input']['turn_detection']['interrupt_response'] === true);
+        // Se calla al oír voz, pero no responde solo: la app responde si no es ruido.
+        Http::assertSent(fn (PeticionHttp $peticion) => $peticion['session']['audio']['input']['turn_detection']['interrupt_response'] === true
+            && $peticion['session']['audio']['input']['turn_detection']['create_response'] === false);
     }
 
     public function test_in_room_mode_the_app_decides_when_the_voice_answers_or_stops()

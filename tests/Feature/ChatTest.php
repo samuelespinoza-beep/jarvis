@@ -288,4 +288,13 @@ class ChatTest extends TestCase
 
         Jarvis::assertNeverPrompted();
     }
+
+    public function test_the_assistant_is_told_not_to_write_code_in_chat_or_voice()
+    {
+        // Las reglas son las mismas para el chat escrito y la voz en vivo.
+        $instrucciones = (new Jarvis)->instruccionesComunes();
+
+        $this->assertStringContainsString('No escribes código de programación', $instrucciones);
+        $this->assertStringContainsString('le corresponde al equipo técnico', $instrucciones);
+    }
 }

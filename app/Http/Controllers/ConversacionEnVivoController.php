@@ -339,9 +339,10 @@ class ConversacionEnVivoController extends Controller
      * fuera golpes, eco del parlante y ruido de fondo; semantic_vad decide por
      * el sentido de la frase, pero se dispara con cualquier sonido.
      *
-     * En modo sala OpenAI no responde ni se corta solo: la app decide, según
-     * si la frase va dirigida al asistente ("Asistente, …"). Así no contesta a
-     * lo que conversan los demás ni lo corta su propio eco.
+     * OpenAI no responde solo: la app pide la respuesta cuando ya tiene el
+     * texto y es una frase real, no ruido (con ruido el modelo de transcripción
+     * inventa frases como "Gracias."). En modo sala, además, solo si va
+     * dirigida al asistente ("Asistente, …") y sin cortarse por su propio eco.
      *
      * @param  array{tipo: string, umbral: float, umbral_hablando: float, relleno_ms: int, silencio_ms: int, interrumpir: bool}  $deteccion
      * @return array<string, mixed>
@@ -350,7 +351,7 @@ class ConversacionEnVivoController extends Controller
     {
         $comun = $sala
             ? ['interrupt_response' => false, 'create_response' => false]
-            : ['interrupt_response' => $deteccion['interrumpir'], 'create_response' => true];
+            : ['interrupt_response' => $deteccion['interrumpir'], 'create_response' => false];
 
         if ($deteccion['tipo'] === 'semantic_vad') {
             return ['type' => 'semantic_vad', 'eagerness' => 'low', ...$comun];
