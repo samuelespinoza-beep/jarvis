@@ -104,6 +104,11 @@ export function useConversacionEnVivo(
     // Si se pidió parar mientras buscaba: al llegar el resultado no se pone a hablar.
     let callarTrasHerramienta = false;
     const contextoSala: string[] = [];
+    // Detección de voz de la sesión; mientras el asistente habla se le sube el
+    // umbral, para que lo interrumpa la voz del usuario y no el eco de los parlantes.
+    let deteccion: Record<string, unknown> | null = null;
+    let umbralHablando = 0.85;
+    let umbralSubido = false;
     let finDeVoz: number | undefined;
 
     let conexion: RTCPeerConnection | null = null;
@@ -386,6 +391,32 @@ export function useConversacionEnVivo(
         pedirRespuesta(true);
     }
 
+    function ajustarUmbral(hablando: boolean) {
+        if (
+            !deteccion ||
+            deteccion.type !== 'server_vad' ||
+            !interrumpible.value ||
+            umbralSubido === hablando
+        ) {
+            return;
+        }
+
+        umbralSubido = hablando;
+        enviar({
+            type: 'session.update',
+            session: {
+                type: 'realtime',
+                audio: {
+                    input: {
+                        turn_detection: hablando
+                            ? { ...deteccion, threshold: umbralHablando }
+                            : deteccion,
+                    },
+                },
+            },
+        });
+    }
+
     function borrarItem(id: string) {
         enviar({ type: 'conversation.item.delete', item_id: id });
     }
@@ -634,6 +665,7 @@ export function useConversacionEnVivo(
                 window.clearTimeout(finDeVoz);
                 vozSonando = true;
                 aplicarMicrofono();
+                ajustarUmbral(true);
                 break;
             case 'output_audio_buffer.stopped':
             case 'output_audio_buffer.cleared':
@@ -647,6 +679,7 @@ export function useConversacionEnVivo(
                 finDeVoz = window.setTimeout(() => {
                     vozSonando = false;
                     aplicarMicrofono();
+                    ajustarUmbral(false);
                 }, 400);
                 break;
             case 'error':
@@ -723,6 +756,8 @@ export function useConversacionEnVivo(
         respuestaRelevo = null;
         callarTrasHerramienta = false;
         contextoSala.length = 0;
+        deteccion = null;
+        umbralSubido = false;
         actividad.value = null;
     }
 
@@ -754,12 +789,18 @@ export function useConversacionEnVivo(
                 },
                 headers: { Accept: 'application/json' },
             });
-            const { llave, minutos_inactividad, interrumpir, modo } = enJson<{
+            const datosSesion = enJson<{
                 llave: string;
                 minutos_inactividad: number;
                 interrumpir: boolean;
                 modo: ModoEnVivo;
+                deteccion: Record<string, unknown> | null;
+                umbral_hablando: number;
             }>(respuesta);
+            const { llave, minutos_inactividad, interrumpir, modo } =
+                datosSesion;
+            deteccion = datosSesion.deteccion;
+            umbralHablando = datosSesion.umbral_hablando;
             minutosInactividad = minutos_inactividad;
             interrumpible.value = interrumpir;
             sala.value = modo === 'sala';

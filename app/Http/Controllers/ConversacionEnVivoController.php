@@ -118,6 +118,9 @@ class ConversacionEnVivoController extends Controller
             // En modo sala el micrófono queda siempre abierto: para cortarlo se dice "Asistente, para".
             'interrumpir' => $sala || $config['deteccion']['interrumpir'],
             'modo' => $sala ? 'sala' : 'personal',
+            // Para exigir más al detectar voz mientras el asistente habla (y volver al terminar).
+            'deteccion' => $sala ? null : $this->deteccionDeTurnos($config['deteccion']),
+            'umbral_hablando' => $config['deteccion']['umbral_hablando'],
         ]);
     }
 
@@ -340,7 +343,7 @@ class ConversacionEnVivoController extends Controller
      * si la frase va dirigida al asistente ("Asistente, …"). Así no contesta a
      * lo que conversan los demás ni lo corta su propio eco.
      *
-     * @param  array{tipo: string, umbral: float, relleno_ms: int, silencio_ms: int, interrumpir: bool}  $deteccion
+     * @param  array{tipo: string, umbral: float, umbral_hablando: float, relleno_ms: int, silencio_ms: int, interrumpir: bool}  $deteccion
      * @return array<string, mixed>
      */
     private function deteccionDeTurnos(array $deteccion, bool $sala = false): array

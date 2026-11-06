@@ -80,6 +80,21 @@ class ConversacionEnVivoTest extends TestCase
         });
     }
 
+    public function test_by_default_the_voice_can_be_interrupted_by_speaking_like_chatgpt()
+    {
+        Http::fake(['api.openai.com/v1/realtime/client_secrets' => Http::response(['value' => 'ek_1'])]);
+
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('chat.en-vivo.sesion'))
+            ->assertOk()
+            ->assertJsonPath('interrumpir', true)
+            // Lo que el navegador usa para exigir más mientras el asistente habla.
+            ->assertJsonPath('deteccion.interrupt_response', true)
+            ->assertJsonPath('umbral_hablando', 0.85);
+
+        Http::assertSent(fn (PeticionHttp $peticion) => $peticion['session']['audio']['input']['turn_detection']['interrupt_response'] === true);
+    }
+
     public function test_in_room_mode_the_app_decides_when_the_voice_answers_or_stops()
     {
         Http::fake(['api.openai.com/v1/realtime/client_secrets' => Http::response(['value' => 'ek_sala', 'expires_at' => 1])]);

@@ -66,12 +66,16 @@ return [
             'tipo' => env('JARVIS_CONVERSACION_DETECCION', 'server_vad'),
             // De 0 a 1: más alto exige voz más clara y fuerte para contar como turno.
             'umbral' => (float) env('JARVIS_CONVERSACION_UMBRAL', 0.7),
+            // Mientras el asistente habla se exige más: la voz del usuario cerca del micrófono lo
+            // interrumpe, pero el eco más débil de los parlantes no.
+            'umbral_hablando' => (float) env('JARVIS_CONVERSACION_UMBRAL_HABLANDO', 0.85),
             // Voz mínima previa que se guarda y silencio que cierra el turno.
             'relleno_ms' => 300,
             'silencio_ms' => (int) env('JARVIS_CONVERSACION_SILENCIO_MS', 700),
-            // Si es false, el micrófono se cierra mientras el asistente habla: con parlantes evita que
-            // su propia voz vuelva a entrar como eco. Con audífonos se puede activar para interrumpirlo.
-            'interrumpir' => (bool) env('JARVIS_CONVERSACION_INTERRUMPIR', false),
+            // Interrumpirlo hablando, como en ChatGPT: se calla apenas el usuario dice algo ("espera",
+            // "gracias"). Si con parlantes se corta solo por su eco, subir umbral_hablando o poner
+            // false: el micrófono se cierra mientras habla y se corta con Detener o Esc.
+            'interrumpir' => (bool) env('JARVIS_CONVERSACION_INTERRUMPIR', true),
         ],
     ],
 
