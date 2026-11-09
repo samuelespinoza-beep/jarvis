@@ -5,7 +5,8 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
-@custom-variant dark (&:is(.dark *));
+/* El tema del núcleo es oscuro: también activa las clases dark: de los componentes. */
+@custom-variant dark (&:is(.dark *, .tema-nucleo *));
 
 @theme inline {
     --font-sans:
@@ -218,6 +219,70 @@
     --sidebar-accent-foreground: var(--hud-texto);
     --sidebar-border: hsl(27 90% 55% / 0.18);
     --sidebar-ring: var(--hud-acento);
+}
+
+/*
+ * Tema oscuro del "núcleo de circuitos" (modelo 9) para toda la app: app.blade.php
+ * pone la clase en <html>, así también se oscurecen el menú, los menús y los avisos.
+ * Sin la clase, .tema-jarvis queda como tema claro de respaldo.
+ */
+.tema-jarvis.tema-nucleo {
+    color-scheme: dark;
+
+    --hud-fondo: #06080b;
+    --hud-superficie: #141922;
+    --hud-texto: #f4ead9;
+    --hud-suave: #8f8779;
+    --hud-acento: #ff9a2e;
+    --hud-acento-fuerte: #ffb04d;
+    --hud-acento-texto: #ffc46b;
+    --hud-sobre-acento: #1d1004;
+    --hud-acento-rgb: 255, 154, 46;
+
+    --background: #06080b;
+    --card: #0e1218;
+    --popover: #0e1218;
+    --secondary: #141922;
+    --muted: #141922;
+    --accent: #1b2130;
+    --border: rgb(255 170 70 / 0.16);
+    --input: rgb(255 170 70 / 0.24);
+    --sidebar: #070a0e;
+    --sidebar-background: #070a0e;
+    --sidebar-accent: #141922;
+    --sidebar-border: rgb(255 170 70 / 0.14);
+
+    /* Avisos con colores fijos (ámbar, verde, rojo): versiones para fondo oscuro. */
+    --color-amber-50: rgb(255 170 70 / 0.08);
+    --color-amber-300: rgb(255 170 70 / 0.35);
+    --color-amber-700: #ffc46b;
+    --color-amber-800: #ffd08a;
+    --color-emerald-50: rgb(52 211 153 / 0.08);
+    --color-emerald-300: rgb(52 211 153 / 0.35);
+    --color-emerald-600: #34d399;
+    --color-emerald-700: #6ee7b7;
+    --color-rose-50: rgb(251 113 133 / 0.1);
+    --color-rose-300: rgb(251 113 133 / 0.4);
+    --color-rose-100: rgb(251 113 133 / 0.16);
+    --color-rose-600: #fb7185;
+    --color-rose-700: #fda4af;
+    --color-green-600: #34d399;
+}
+
+/* Reflejo azul acero en la esquina, como en el diseño del núcleo. */
+.tema-nucleo .fondo-nucleo {
+    background:
+        radial-gradient(
+            ellipse 60% 45% at 92% -5%,
+            rgb(70 120 210 / 0.2),
+            transparent 70%
+        ),
+        radial-gradient(
+            ellipse 50% 40% at 0% 100%,
+            rgb(70 120 210 / 0.08),
+            transparent 70%
+        ),
+        var(--hud-fondo);
 }
 
 @layer base {

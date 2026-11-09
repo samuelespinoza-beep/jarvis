@@ -22,6 +22,7 @@ import {
 import { useEventListener, useObjectUrl } from '@vueuse/core';
 import { computed, nextTick, ref, toRef, watch } from 'vue';
 import { show as verReunion } from '@/actions/App/Http/Controllers/HistorialController';
+import NucleoCircuitos from '@/components/jarvis/NucleoCircuitos.vue';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -36,10 +37,12 @@ import {
 import { esImagen, esSoloDocumento, useChat } from '@/composables/useChat';
 import type { MensajeChat } from '@/composables/useChat';
 import { useConversacionEnVivo } from '@/composables/useConversacionEnVivo';
+import type { EstadoEnVivo } from '@/composables/useConversacionEnVivo';
 import { useDictado } from '@/composables/useDictado';
 import { useVoz } from '@/composables/useVoz';
 import { formatearTamano, formatearTiempo } from '@/lib/formato';
 import { markdownSeguro } from '@/lib/markdown';
+import type { EstadoNucleo } from '@/lib/nucleoCircuitos';
 import type {
     ConfigDocumentos,
     ConfigVoces,
@@ -63,8 +66,14 @@ const props = withDefaults(
         prepararEnVivo?: () => Promise<void>;
         // Al silenciar la voz, la reunión puede seguir grabando.
         reanudarEnSilencio?: () => Promise<void>;
+        // "conversacion": el núcleo y el último intercambio; "chat": todo el historial.
+        vista?: 'chat' | 'conversacion';
+        // Volumen del micrófono de la grabación: el núcleo respira con él si no hay voz en vivo.
+        analizador?: AnalyserNode | null;
     }>(),
     {
+        vista: 'chat',
+        analizador: null,
         reunionAbierta: false,
         reunion: null,
         acta: null,
@@ -77,6 +86,8 @@ const emit = defineEmits<{
     salirDeReunion: [];
     // Avisa al empezar y al terminar la conversación por voz en vivo (para pausar la reunión).
     enVivo: [activo: boolean];
+    // "Ver toda la conversación" en la vista Conversación.
+    verChat: [];
 }>();
 
 const { mensajes, conversacionId, enviando, error, nueva, enviar, recargar } =
@@ -180,6 +191,123 @@ async function alternarSilencioEnVivo() {
     await enVivo.alternarSilencio();
     await props.reanudarEnSilencio?.();
 }
+// Estado corto bajo el núcleo, en la vista Conversación.
+const estadoConversacion = computed(() => {
+    if (conversandoEnVivo.value) {
+        if (enVivo.silenciado.value && enVivo.estado.value === 'escuchando') {
+            return 'Micrófono silenciado';
+        }
+
+        return {
+            apagado: '',
+            conectando: 'Conectando',
+            escuchando: enVivo.sala.value ? 'Escuchando la sala' : 'Escuchando',
+            pensando: enVivo.actividad.value ?? 'Pensando',
+            hablando: 'Respondiendo',
+            guardando: 'Guardando',
+        }[enVivo.estado.value];
+    }
+
+    if (enviando.value) {
+        return actividadEscrita.value ?? 'Pensando';
+    }
+
+    return props.escuchando
+        ? 'Grabando la reunión'
+        : 'Presiona Hablar para conversar';
+});
+
+// Herramienta que usa la respuesta escrita en curso ("Buscando en internet…").
+const actividadEscrita = computed(() =>
+    enviando.value ? (mensajes.value.at(-1)?.actividad ?? null) : null,
+);
+
+const NUCLEO_EN_VIVO: Record<EstadoEnVivo, EstadoNucleo> = {
+    apagado: 'reposo',
+    conectando: 'pensando',
+    escuchando: 'escuchando',
+    pensando: 'pensando',
+    hablando: 'hablando',
+    guardando: 'pensando',
+};
+
+// Estado del núcleo: en "trabajando" (al usar una herramienta) los datos corren por los circuitos.
+const estadoNucleo = computed<EstadoNucleo>(() => {
+    if (conversandoEnVivo.value) {
+        if (enVivo.estado.value === 'pensando' && enVivo.actividad.value) {
+            return 'trabajando';
+        }
+
+        return NUCLEO_EN_VIVO[enVivo.estado.value];
+    }
+
+    if (enviando.value) {
+        return actividadEscrita.value ? 'trabajando' : 'pensando';
+    }
+
+    return props.escuchando ? 'escuchando' : 'reposo';
+});
+
+let muestrasGrabacion = new Uint8Array(0);
+
+// Volumen que sigue el núcleo: la voz en vivo o, si no hay, el micrófono de la grabación.
+function nivelNucleo(): number {
+    if (conversandoEnVivo.value) {
+        return enVivo.nivelVoz();
+    }
+
+    const analizador = props.analizador;
+
+    if (!analizador || !props.escuchando) {
+        return 0;
+    }
+
+    if (muestrasGrabacion.length !== analizador.fftSize) {
+        muestrasGrabacion = new Uint8Array(analizador.fftSize);
+    }
+
+    analizador.getByteTimeDomainData(muestrasGrabacion);
+    let suma = 0;
+
+    for (const valor of muestrasGrabacion) {
+        const x = (valor - 128) / 128;
+        suma += x * x;
+    }
+
+    return Math.min(1, Math.sqrt(suma / muestrasGrabacion.length) * 4);
+}
+
+/**
+ * Lo último que se habló o escribió: la pregunta del usuario y lo que el
+ * asistente respondió después (puede ser más de un mensaje: un aviso, los
+ * enlaces y la respuesta).
+ */
+const ultimoIntercambio = computed(() => {
+    const dichos = entradas.value.flatMap((entrada) =>
+        entrada.tipo === 'mensaje' && entrada.mensaje.contenido.trim()
+            ? [{ clave: entrada.clave, mensaje: entrada.mensaje }]
+            : [],
+    );
+    const indice = dichos.findLastIndex(
+        (dicho) => dicho.mensaje.rol === 'usuario',
+    );
+    const respuestas = dichos
+        .slice(indice + 1)
+        .filter((dicho) => dicho.mensaje.rol === 'jarvis')
+        .slice(-3);
+
+    if (indice === -1 && !respuestas.length) {
+        return null;
+    }
+
+    return {
+        pregunta: indice === -1 ? null : dichos[indice].mensaje,
+        respuestas,
+    };
+});
+
+const actaLista = computed(() => entradas.value.at(-1)?.tipo === 'acta');
+
 const cajaTexto = ref<HTMLTextAreaElement | null>(null);
 
 // Con Enter (o ➤) el dictado se envía apenas se transcribe; con ✓ queda en la caja.
@@ -539,6 +667,12 @@ watch(
     },
 );
 
+// Al pasar a la vista Chat se muestra lo más reciente.
+watch(
+    () => props.vista,
+    (vista) => vista === 'chat' && void bajar(true),
+);
+
 // Al empezar o reanudar la grabación se calla, para no quedar grabado.
 watch(
     () => props.escuchando,
@@ -548,7 +682,8 @@ watch(
 
 <template>
     <div
-        class="relative flex min-h-0 flex-1 flex-col gap-3"
+        class="relative mx-auto flex min-h-0 w-full flex-1 flex-col gap-3"
+        :class="vista === 'conversacion' ? 'max-w-6xl' : 'max-w-3xl'"
         @dragover.prevent="arrastrando = !enviando"
         @dragleave="alSalirArrastre"
         @drop.prevent="alSoltar"
@@ -560,20 +695,8 @@ watch(
             Suelta el documento o la imagen para adjuntarlo
         </div>
 
-        <div class="flex items-center justify-between">
-            <p class="text-xs text-hud-suave">
-                <template v-if="reunionId && reunionAbierta">
-                    Chat de la reunión en curso: conoce lo que se va diciendo.
-                </template>
-                <template v-else-if="reunionId">
-                    Chat de la reunión terminada. Puedes seguir preguntando
-                    sobre ella.
-                </template>
-                <template v-else>
-                    El Asistente IA puede buscar en internet, leer páginas, ver
-                    YouTube, consultar las reuniones y resumir documentos.
-                </template>
-            </p>
+        <!-- En Conversación la columna se ensancha para el núcleo; la barra y la caja siguen angostas. -->
+        <div class="mx-auto flex w-full max-w-3xl items-center justify-end">
             <div class="flex shrink-0 items-center gap-1">
                 <DropdownMenu>
                     <DropdownMenuTrigger as-child>
@@ -660,8 +783,67 @@ watch(
         </div>
 
         <div
+            v-if="vista === 'conversacion'"
+            class="flex min-h-0 flex-1 flex-col items-center gap-4 py-2 text-center"
+        >
+            <!-- El núcleo ocupa el espacio libre. Su tamaño no depende del texto de abajo
+                 (que tiene altura fija): así no salta ni parpadea cuando llega una respuesta. -->
+            <div class="max-h-[1000px] min-h-[200px] w-full flex-1">
+                <NucleoCircuitos :estado="estadoNucleo" :nivel="nivelNucleo" />
+            </div>
+
+            <p
+                class="font-mono text-xs tracking-[0.3em] text-hud-acento-texto uppercase"
+                aria-live="polite"
+            >
+                {{ estadoConversacion }}
+            </p>
+
+            <!-- Zona del texto con altura fija: subtítulos o aviso del acta. -->
+            <div
+                class="flex h-[clamp(110px,20vh,220px)] w-full shrink-0 flex-col items-center gap-3 overflow-y-auto"
+            >
+                <div
+                    v-if="ultimoIntercambio"
+                    class="flex w-full max-w-xl flex-col gap-3"
+                >
+                    <p
+                        v-if="ultimoIntercambio.pregunta"
+                        class="text-sm text-hud-suave"
+                    >
+                        «{{
+                            esSoloDocumento(ultimoIntercambio.pregunta)
+                                ? ultimoIntercambio.pregunta.documento
+                                : ultimoIntercambio.pregunta.contenido
+                        }}»
+                    </p>
+                    <div
+                        v-for="respuesta in ultimoIntercambio.respuestas"
+                        :key="respuesta.clave"
+                        class="respuesta-jarvis subtitulo flex flex-col items-center gap-2 text-lg leading-relaxed break-words text-hud-texto"
+                        v-html="markdownSeguro(respuesta.mensaje.contenido)"
+                    />
+                </div>
+
+                <p v-if="actaLista" class="text-sm text-emerald-600">
+                    El acta de la reunión está en el chat.
+                </p>
+
+                <button
+                    v-if="ultimoIntercambio || actaLista"
+                    type="button"
+                    class="text-sm text-hud-suave underline underline-offset-4 hover:text-hud-texto"
+                    @click="emit('verChat')"
+                >
+                    Ver toda la conversación
+                </button>
+            </div>
+        </div>
+
+        <div
+            v-show="vista === 'chat'"
             ref="lista"
-            class="flex min-h-[16rem] flex-1 flex-col gap-3 overflow-y-auto pr-1 lg:max-h-[60vh]"
+            class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1"
             aria-live="polite"
             @scroll="alDesplazar"
         >
@@ -675,6 +857,10 @@ watch(
                 >
                     Cada minuto grabado aparecerá aquí con su tema y un resumen
                     corto. Mientras tanto, puedes preguntarle al Asistente IA.
+                </p>
+                <p v-else-if="!reunionId" class="mb-2 text-sm text-hud-suave">
+                    El Asistente IA puede buscar en internet, leer páginas, ver
+                    YouTube, consultar las reuniones y resumir documentos.
                 </p>
                 <p class="text-sm text-hud-suave">Prueba con:</p>
                 <button
@@ -823,8 +1009,8 @@ watch(
                         v-else-if="reunion.estado === 'error' || !acta"
                         class="text-rose-600"
                     >
-                        No se pudo generar el acta. Revisa la pestaña Reunión
-                        para reintentarlo.
+                        No se pudo generar el acta. Abre el panel Reunión para
+                        reintentarlo.
                     </p>
                     <template v-else>
                         <p class="font-medium text-hud-texto">
@@ -903,7 +1089,7 @@ watch(
                 dictado.error.value ||
                 enVivo.error.value
             "
-            class="flex items-center gap-2 text-sm text-rose-600"
+            class="mx-auto flex w-full max-w-3xl items-center gap-2 text-sm text-rose-600"
             role="alert"
         >
             <CircleAlert class="size-4 shrink-0" />
@@ -924,7 +1110,7 @@ watch(
         />
 
         <form
-            class="flex flex-col rounded-2xl border bg-hud-superficie/30 transition-[border-color,box-shadow] focus-within:border-hud-acento"
+            class="mx-auto flex w-full max-w-3xl flex-col rounded-2xl border bg-hud-superficie/30 transition-[border-color,box-shadow] focus-within:border-hud-acento"
             :class="
                 conversandoEnVivo
                     ? 'border-hud-acento/60 shadow-[0_0_0_3px_rgba(var(--hud-acento-rgb),0.12)]'
@@ -983,7 +1169,7 @@ watch(
                     :class="
                         enVivo.silenciado.value
                             ? 'border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100'
-                            : 'border-hud-acento/40 bg-white/60 text-hud-acento-texto hover:bg-hud-acento/10'
+                            : 'border-hud-acento/40 bg-hud-fondo/60 text-hud-acento-texto hover:bg-hud-acento/10'
                     "
                     :disabled="
                         ['conectando', 'guardando'].includes(
@@ -1009,7 +1195,7 @@ watch(
                 <button
                     v-if="puedeDetener"
                     type="button"
-                    class="flex shrink-0 items-center gap-1.5 rounded-full border border-hud-acento/40 bg-white/60 px-3 py-1 text-xs font-medium text-hud-acento-texto transition-colors hover:bg-hud-acento/10"
+                    class="flex shrink-0 items-center gap-1.5 rounded-full border border-hud-acento/40 bg-hud-fondo/60 px-3 py-1 text-xs font-medium text-hud-acento-texto transition-colors hover:bg-hud-acento/10"
                     title="Detener la respuesta (Esc)"
                     @click="enVivo.detenerRespuesta"
                 >
@@ -1018,7 +1204,7 @@ watch(
                 </button>
                 <button
                     type="button"
-                    class="flex shrink-0 items-center gap-1.5 rounded-full border border-rose-300 bg-white/60 px-3 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
+                    class="flex shrink-0 items-center gap-1.5 rounded-full border border-rose-300 bg-hud-fondo/60 px-3 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
                     :disabled="enVivo.estado.value === 'guardando'"
                     @click="enVivo.terminar"
                 >
@@ -1170,7 +1356,7 @@ watch(
                     "
                     type="button"
                     :disabled="enviando"
-                    class="flex h-8 items-center gap-1.5 rounded-full border border-hud-acento/40 px-3 text-xs font-medium text-hud-acento-texto transition-colors hover:bg-hud-acento/10 disabled:opacity-50"
+                    class="flex h-8 items-center gap-1.5 rounded-full bg-hud-acento px-3.5 text-xs font-medium text-hud-sobre-acento transition-colors hover:bg-hud-acento-fuerte disabled:opacity-50"
                     :title="
                         escuchando
                             ? 'Conversar por voz en vivo (la reunión se pausa mientras tanto)'
@@ -1179,7 +1365,7 @@ watch(
                     @click="hablarEnVivo"
                 >
                     <AudioLines class="size-4" />
-                    En vivo
+                    Hablar
                 </button>
 
                 <span
@@ -1261,5 +1447,30 @@ watch(
 
 .respuesta-jarvis :deep(li + li) {
     margin-top: 0.35rem;
+}
+
+/* En la vista Conversación, los enlaces van como botones en vez de lista. */
+.subtitulo :deep(ul),
+.subtitulo :deep(ol) {
+    list-style: none;
+    padding-left: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.subtitulo :deep(li + li) {
+    margin-top: 0;
+}
+
+.subtitulo :deep(li a) {
+    display: inline-block;
+    border: 1px solid rgba(var(--hud-acento-rgb), 0.3);
+    border-radius: 9999px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.875rem;
+    text-decoration: none;
+    word-break: normal;
 }
 </style>

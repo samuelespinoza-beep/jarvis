@@ -2,6 +2,7 @@
 
 namespace App\Ai\Tools;
 
+use App\Ai\ContenidoExterno;
 use App\Support\Navegador;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\Client\PendingRequest;
@@ -39,13 +40,13 @@ class UltimosVideosYoutube implements Tool
         try {
             if (filled(config('services.youtube.api_key'))) {
                 try {
-                    return $this->desdeApi($canal, $cantidad);
+                    return ContenidoExterno::envolver('YouTube', $this->desdeApi($canal, $cantidad));
                 } catch (Throwable) {
                     // Cuota agotada o llave inválida: se intenta leyendo la página.
                 }
             }
 
-            return $this->desdePagina($canal, $cantidad);
+            return ContenidoExterno::envolver('YouTube', $this->desdePagina($canal, $cantidad));
         } catch (Throwable $e) {
             return "No se pudo consultar YouTube: {$e->getMessage()}";
         }

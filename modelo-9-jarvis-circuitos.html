@@ -1,0 +1,800 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Modelo 9 · JARVIS circuitos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+    :root {
+        --fondo: #06080b;
+        --superficie: #0e1218;
+        --superficie-2: #141922;
+        --borde: rgba(255, 170, 70, .14);
+        --borde-fuerte: rgba(255, 170, 70, .32);
+        --texto: #f4ead9;
+        --suave: #8f8779;
+        --acento: #ff9a2e;
+        --acento-claro: #ffc46b;
+        --acento-rgb: 255, 154, 46;
+        --acero-rgb: 70, 120, 210;
+        --rojo: #ff5a4f;
+        --hud: 'Chakra Petch', ui-monospace, 'SF Mono', Menlo, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+        font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        color: var(--texto); height: 100vh; display: flex; overflow: hidden;
+        background:
+            radial-gradient(ellipse 60% 45% at 92% -5%, rgba(var(--acero-rgb), .22), transparent 70%),
+            radial-gradient(ellipse 50% 40% at 0% 100%, rgba(var(--acero-rgb), .10), transparent 70%),
+            var(--fondo);
+    }
+    button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+    button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+    .hud { font-family: var(--hud); }
+    svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+    /* ---------- Menú de íconos ---------- */
+    .riel {
+        width: 56px; flex-shrink: 0; border-right: 1px solid var(--borde);
+        display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 0;
+        background: rgba(6, 8, 11, .6);
+    }
+    .riel .logo { width: 30px; height: 30px; border-radius: 8px; margin-bottom: 14px; background: radial-gradient(circle, var(--acento-claro), var(--acento) 55%, transparent 75%); }
+    .riel button { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: var(--suave); }
+    .riel button:hover, .riel button.activo { background: var(--superficie-2); color: var(--acento-claro); }
+    .riel .abajo { margin-top: auto; }
+
+    main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    /* ---------- Barra superior ---------- */
+    .barra { position: relative; z-index: 3; display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid transparent; transition: border-color .2s; }
+    body.vista-chat .barra { border-bottom-color: var(--borde); }
+    .marca { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .marca .nombre { font-family: var(--hud); font-size: 15px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+    .marca .sub { font-family: var(--hud); font-size: 11px; letter-spacing: .15em; text-transform: uppercase; color: var(--acento); }
+    .mini-nucleo { width: 32px; height: 32px; position: relative; flex-shrink: 0; }
+    .mini-nucleo span { position: absolute; border-radius: 50%; }
+    .mini-nucleo .anillo { inset: 0; border: 1.5px dashed rgba(var(--acento-rgb), .6); animation: girar 6s linear infinite; }
+    .mini-nucleo .centro { inset: 28%; background: radial-gradient(circle, #fff3dc, var(--acento) 55%, transparent 80%); box-shadow: 0 0 12px rgba(var(--acento-rgb), .8); animation: respirar 1.6s ease-in-out infinite; }
+    body.vista-conversacion .mini-nucleo, body.vista-conversacion .marca .sub { display: none; }
+
+    .selector { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--superficie); border: 1px solid var(--borde); margin-left: 8px; }
+    .selector button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--suave); transition: background .15s, color .15s; }
+    .selector button[aria-pressed="true"] { background: rgba(var(--acento-rgb), .14); color: var(--acento-claro); box-shadow: inset 0 0 0 1px rgba(var(--acento-rgb), .35); font-weight: 500; }
+    .selector svg.i { width: 16px; height: 16px; }
+
+    .espacio { flex: 1; }
+    .pastilla { display: flex; align-items: center; gap: 10px; border: 1px solid var(--borde); background: var(--superficie); border-radius: 999px; padding: 4px 5px 4px 14px; font-size: 13px; }
+    .punto { width: 8px; height: 8px; border-radius: 50%; background: var(--rojo); box-shadow: 0 0 8px var(--rojo); animation: latido 1.4s infinite; }
+    .pastilla .tiempo { font-family: var(--hud); font-variant-numeric: tabular-nums; letter-spacing: .05em; }
+    .pastilla .icono { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--suave); }
+    .pastilla .icono:hover { background: var(--superficie-2); color: var(--texto); }
+    .pastilla .icono.terminar { color: var(--rojo); }
+    .boton { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 8px 16px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+    .boton.primario { background: var(--acento); color: #1d1004; }
+    .boton.primario:hover { background: var(--acento-claro); }
+    .boton.borde { border: 1px solid var(--borde); }
+    .boton.borde:hover { background: var(--superficie-2); border-color: var(--borde-fuerte); }
+
+    @keyframes girar { to { transform: rotate(360deg); } }
+    @keyframes respirar { 50% { transform: scale(1.08); } }
+    @keyframes latido { 50% { opacity: .3; } }
+
+    /* ---------- Las dos vistas ---------- */
+    .vistas { flex: 1; position: relative; min-height: 0; }
+    .vista { position: absolute; inset: 0; transition: opacity .2s ease; }
+    body.vista-conversacion .vista.chat, body.vista-chat .vista.conversacion { opacity: 0; pointer-events: none; visibility: hidden; }
+
+    /* Vista Conversación */
+    .conversacion { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 0 20px; }
+    .escena { position: relative; width: min(94%, 1000px); height: min(56vh, 560px); }
+    .escena canvas { position: absolute; left: -20%; top: -22%; width: 140%; height: 144%; pointer-events: none; mix-blend-mode: screen;
+        -webkit-mask-image: radial-gradient(closest-side, #000 58%, transparent 100%); mask-image: radial-gradient(closest-side, #000 58%, transparent 100%); }
+    .conversacion { overflow-x: clip; }
+    .sin-3d { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font-size: 13px; color: var(--suave); padding: 20px; }
+    /* Esquinas de visor alrededor del núcleo. */
+    .escena::before, .escena::after { content: ''; position: absolute; width: 22px; height: 22px; border-color: rgba(var(--acento-rgb), .35); border-style: solid; pointer-events: none; }
+    .escena::before { top: 2%; left: 2%; border-width: 1px 0 0 1px; }
+    .escena::after { bottom: 2%; right: 2%; border-width: 0 1px 1px 0; }
+    .lectura { position: absolute; font-family: var(--hud); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: rgba(var(--acento-rgb), .55); pointer-events: none; }
+    .lectura.arriba { top: 2%; right: 2%; text-align: right; }
+    .lectura.abajo { bottom: 2%; left: 2%; }
+    .medidor { display: block; width: 70px; height: 2px; margin-top: 6px; background: rgba(var(--acento-rgb), .15); position: relative; overflow: hidden; }
+    .medidor i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--acento); box-shadow: 0 0 6px var(--acento); }
+
+    .estado { font-family: var(--hud); font-size: 13px; letter-spacing: .35em; text-transform: uppercase; color: var(--acento-claro); text-shadow: 0 0 12px rgba(var(--acento-rgb), .6); }
+    .subtitulos { max-width: 860px; text-align: center; display: flex; flex-direction: column; gap: 10px; }
+    .subtitulos .tu { color: var(--suave); font-size: 15px; }
+    .subtitulos .ia { font-size: 19px; line-height: 1.5; }
+    .enlaces { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .enlaces a { font-size: 13px; color: var(--acento-claro); text-decoration: none; border: 1px solid var(--borde-fuerte); background: rgba(var(--acento-rgb), .06); border-radius: 999px; padding: 5px 12px; }
+    .enlaces a:hover { background: rgba(var(--acento-rgb), .14); }
+    .ver-todo { font-size: 13px; color: var(--suave); text-decoration: underline; text-underline-offset: 3px; }
+    .ver-todo:hover { color: var(--texto); }
+
+    /* Vista Chat */
+    .chat { overflow-y: auto; padding: 28px 20px; }
+    .hilo { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+    .yo { align-self: flex-end; background: rgba(var(--acento-rgb), .12); border: 1px solid var(--borde-fuerte); padding: 10px 16px; border-radius: 18px 18px 4px 18px; max-width: 80%; font-size: 15px; }
+    .ia-msj { font-size: 15px; line-height: 1.6; display: flex; flex-direction: column; gap: 10px; }
+    .ia-msj .voz { font-family: var(--hud); font-size: 11px; color: var(--suave); letter-spacing: .12em; text-transform: uppercase; }
+    .tarjetas { display: flex; flex-direction: column; gap: 6px; }
+    .tarjetas a { display: flex; gap: 10px; align-items: center; text-decoration: none; color: var(--texto); background: var(--superficie); border: 1px solid var(--borde); border-radius: 10px; padding: 9px 12px; font-size: 14px; }
+    .tarjetas a:hover { border-color: var(--borde-fuerte); background: var(--superficie-2); }
+    .tarjetas .sitio { font-size: 12px; color: var(--acento); margin-left: auto; flex-shrink: 0; }
+    .hito { align-self: center; font-family: var(--hud); font-size: 11px; letter-spacing: .15em; text-transform: uppercase; color: var(--suave); display: flex; align-items: center; gap: 8px; }
+    .hito::before, .hito::after { content: ''; width: 40px; height: 1px; background: var(--borde-fuerte); }
+
+    /* ---------- Entrada ---------- */
+    .entrada { padding: 12px 20px 20px; }
+    .franja { max-width: 900px; margin: 0 auto 10px; display: none; align-items: center; gap: 12px; border: 1px solid var(--borde-fuerte); background: rgba(var(--acento-rgb), .06); border-radius: 14px; padding: 8px 8px 8px 14px; font-size: 14px; }
+    body.vista-chat.en-vivo .franja { display: flex; }
+    .ondas { display: flex; align-items: center; gap: 3px; height: 22px; }
+    .ondas i { display: block; width: 3px; height: 6px; border-radius: 2px; background: var(--acento); animation: onda 1s ease-in-out infinite; }
+    .ondas i:nth-child(2) { animation-delay: .1s } .ondas i:nth-child(3) { animation-delay: .2s }
+    .ondas i:nth-child(4) { animation-delay: .3s } .ondas i:nth-child(5) { animation-delay: .4s }
+    @keyframes onda { 0%, 100% { height: 6px } 50% { height: 22px } }
+    .franja .texto { flex: 1; }
+    .caja { max-width: 900px; margin: 0 auto; display: flex; align-items: center; gap: 6px; background: var(--superficie); border: 1px solid var(--borde); border-radius: 999px; padding: 6px 6px 6px 10px; }
+    .caja:focus-within { border-color: var(--borde-fuerte); }
+    .caja input { flex: 1; border: 0; outline: 0; font: inherit; font-size: 15px; padding: 8px 4px; background: transparent; color: var(--texto); min-width: 0; }
+    .caja input::placeholder { color: var(--suave); }
+    .caja .icono { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: var(--suave); flex-shrink: 0; }
+    .caja .icono:hover { background: var(--superficie-2); color: var(--texto); }
+    .hablar { background: var(--acento); color: #1d1004; padding: 10px 18px; border-radius: 999px; display: flex; align-items: center; gap: 8px; font-weight: 600; flex-shrink: 0; box-shadow: 0 0 18px rgba(var(--acento-rgb), .35); }
+    .hablar:hover { background: var(--acento-claro); }
+    body.en-vivo .hablar { background: var(--superficie-2); color: var(--texto); box-shadow: inset 0 0 0 1px var(--borde-fuerte); }
+
+    /* ---------- Panel de la reunión ---------- */
+    .velo { position: fixed; inset: 0; background: rgba(0, 0, 0, .5); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10; }
+    .panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 100%); z-index: 11; background: var(--superficie); border-left: 1px solid var(--borde-fuerte); transform: translateX(100%); transition: transform .25s ease; display: flex; flex-direction: column; }
+    body.panel-abierto .velo { opacity: 1; pointer-events: auto; }
+    body.panel-abierto .panel { transform: none; }
+    .panel header { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--borde); }
+    .panel header h2 { font-family: var(--hud); font-size: 14px; letter-spacing: .15em; text-transform: uppercase; font-weight: 600; flex: 1; }
+    .panel .cuerpo { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
+    .panel label { font-size: 12px; color: var(--suave); display: block; margin-bottom: 6px; }
+    .panel input { width: 100%; border: 1px solid var(--borde); background: var(--fondo); color: var(--texto); border-radius: 8px; padding: 9px 12px; font: inherit; font-size: 14px; }
+    .panel h3 { font-family: var(--hud); font-size: 11px; letter-spacing: .25em; text-transform: uppercase; color: var(--acento); margin-bottom: 10px; font-weight: 500; }
+    .panel ol { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+    .tramo { display: flex; gap: 12px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--borde); }
+    .tramo .min { font-family: var(--hud); color: var(--acento); flex-shrink: 0; }
+
+    /* ---------- Controles de la maqueta ---------- */
+    .demo { position: fixed; left: 72px; bottom: 14px; font-size: 12px; color: var(--suave); z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--superficie); border: 1px dashed var(--borde-fuerte); border-radius: 8px; padding: 6px 8px; max-width: 300px; }
+    .demo button { border: 1px solid var(--borde); border-radius: 6px; padding: 3px 8px; }
+    .demo button[aria-pressed="true"] { background: rgba(var(--acento-rgb), .14); color: var(--acento-claro); }
+
+    body:not(.grabando) .solo-grabando { display: none !important; }
+    body.grabando .solo-inactivo { display: none !important; }
+    body:not(.en-vivo) .solo-envivo { display: none !important; }
+    body.en-vivo .sin-envivo { display: none !important; }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+    @media (max-width: 760px) {
+        .riel { display: none; }
+        .marca .nombre, .pastilla .etiqueta, .boton.reunion span, .selector .texto { display: none; }
+        .barra { padding: 10px 12px; gap: 8px; }
+        .selector { margin-left: 0; }
+        .hablar .texto { display: none; }
+        .escena { width: 100%; height: min(44vh, 92vw); }
+        .escena canvas { left: -75%; width: 250%; }
+        .lectura { display: none; }
+        .subtitulos .ia { font-size: 17px; }
+        .demo { left: auto; right: 8px; bottom: auto; top: 64px; max-width: 220px; opacity: .92; }
+    }
+</style>
+</head>
+<body class="vista-conversacion grabando en-vivo">
+    <nav class="riel" aria-label="Menú">
+        <div class="logo"></div>
+        <button class="activo" title="Asistente IA"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/></svg></button>
+        <button title="Reuniones"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg></button>
+        <button class="abajo" title="Usuario"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></button>
+    </nav>
+
+    <main>
+        <div class="barra">
+            <div class="marca">
+                <div class="mini-nucleo" aria-hidden="true"><span class="anillo"></span><span class="centro"></span></div>
+                <div>
+                    <p class="nombre">Asistente IA</p>
+                    <p class="sub" data-estado-texto>Escuchando</p>
+                </div>
+            </div>
+
+            <div class="selector" role="group" aria-label="Vista">
+                <button type="button" data-vista="conversacion" aria-pressed="true" title="Ver solo la conversación por voz">
+                    <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/></svg>
+                    <span class="texto">Conversación</span>
+                </button>
+                <button type="button" data-vista="chat" aria-pressed="false" title="Ver todo el chat escrito">
+                    <svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>
+                    <span class="texto">Chat</span>
+                </button>
+            </div>
+
+            <div class="espacio"></div>
+
+            <button type="button" class="boton primario solo-inactivo">
+                <svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                Empezar reunión
+            </button>
+
+            <div class="pastilla solo-grabando">
+                <span class="punto"></span>
+                <span class="etiqueta">Grabando</span>
+                <span class="tiempo">00:12:31</span>
+                <button type="button" class="icono" title="Pausar"><svg class="i" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button>
+                <button type="button" class="icono terminar" title="Terminar reunión"><svg class="i" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+            </div>
+
+            <button type="button" class="boton borde reunion" id="abrir-panel" title="Título, agenda y línea de tiempo">
+                <svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>
+                <span>Reunión</span>
+            </button>
+        </div>
+
+        <div class="vistas">
+            <section class="vista conversacion" aria-label="Conversación">
+                <div class="escena" aria-hidden="true">
+                    <canvas id="nucleo"></canvas>
+                    <span class="lectura arriba">Voz<span class="medidor"><i id="medidor"></i></span></span>
+                    <span class="lectura abajo">Asistente · en línea</span>
+                </div>
+                <p class="estado" data-estado-texto>Escuchando</p>
+                <div class="subtitulos">
+                    <p class="tu">«Búscame las últimas notas de El Comercio»</p>
+                    <p class="ia">Tres titulares de hoy: el Papa dice que está en forma tras su cirugía, Tumbes y Piura en alerta por lluvias, y el balance de los 100 días de gobierno.</p>
+                    <div class="enlaces">
+                        <a href="#">El Papa: «estoy en forma» ↗</a>
+                        <a href="#">Alerta por lluvias en el norte ↗</a>
+                        <a href="#">Balance de 100 días ↗</a>
+                    </div>
+                </div>
+                <button type="button" class="ver-todo" data-vista="chat">Ver toda la conversación</button>
+            </section>
+
+            <section class="vista chat" aria-label="Chat">
+                <div class="hilo">
+                    <p class="hito solo-grabando">Reunión iniciada · 10:02</p>
+                    <p class="yo">¿Puedes buscar las últimas notas de El Comercio?</p>
+                    <div class="ia-msj">
+                        <p>Tres titulares de hoy en El Comercio:</p>
+                        <div class="tarjetas">
+                            <a href="#">El Papa León XIV asegura que «está en forma» tras su cirugía <span class="sitio">elcomercio.pe ↗</span></a>
+                            <a href="#">Lluvias por El Niño: Tumbes y Piura en alerta <span class="sitio">elcomercio.pe ↗</span></a>
+                            <a href="#">Balance de los primeros 100 días de gobierno <span class="sitio">elcomercio.pe ↗</span></a>
+                        </div>
+                        <p class="voz">Respondido por voz</p>
+                    </div>
+                    <p class="yo">¿Cuál de esos temas nos conviene priorizar hoy?</p>
+                    <div class="ia-msj">
+                        <p>Mi recomendación es El Niño, con confianza media: afecta directamente a la población y la cobertura sostenida posiciona al medio si el tema escala. Para afinarlo necesito el tráfico de las últimas notas de cada tema.</p>
+                        <p class="voz">Respondido por voz</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="entrada">
+            <div class="franja">
+                <div class="ondas" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+                <span class="texto">Conversación por voz · <span data-estado-texto>Escuchando</span></span>
+            </div>
+            <div class="caja">
+                <button type="button" class="icono" title="Adjuntar documento o imagen"><svg class="i" viewBox="0 0 24 24"><path d="M21 11.5 12.5 20a5 5 0 0 1-7-7L14 4.5a3.5 3.5 0 0 1 5 5L10.5 18a2 2 0 0 1-3-3L15 7.5"/></svg></button>
+                <input placeholder="Escribe, o presiona Hablar…" aria-label="Mensaje para el Asistente IA" />
+                <button type="button" class="icono" title="Dictar"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+                <button type="button" class="icono" title="Enviar"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+                <button type="button" class="hablar" id="hablar">
+                    <svg class="i sin-envivo" viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>
+                    <svg class="i solo-envivo" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                    <span class="texto sin-envivo">Hablar</span>
+                    <span class="texto solo-envivo">Detener</span>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <div class="velo" id="velo"></div>
+    <aside class="panel" aria-label="Reunión">
+        <header>
+            <h2>Reunión</h2>
+            <button type="button" class="boton borde" id="cerrar-panel">Cerrar</button>
+        </header>
+        <div class="cuerpo">
+            <div>
+                <label for="t">Título (opcional)</label>
+                <input id="t" value="Comité editorial" />
+            </div>
+            <div>
+                <h3>Agenda</h3>
+                <ol>
+                    <li>Cobertura de la visita del Papa</li>
+                    <li>Fenómeno El Niño: plan de notas</li>
+                    <li>Métricas de octubre</li>
+                </ol>
+            </div>
+            <div class="solo-grabando">
+                <h3>Línea de tiempo</h3>
+                <div class="tramo"><span class="min">00:00</span><span>Se revisa el tráfico de la semana; Discover cae 12%.</span></div>
+                <div class="tramo"><span class="min">01:00</span><span>Debate sobre cuántas notas dedicar al Papa.</span></div>
+                <div class="tramo"><span class="min">02:00</span><span>Se acuerda mantener cobertura diaria de El Niño.</span></div>
+            </div>
+        </div>
+    </aside>
+
+    <div class="demo">
+        Maqueta:
+        <button type="button" data-demo="grabando" aria-pressed="true">Grabando</button>
+        <span style="flex-basis:100%"></span>
+        Núcleo:
+        <button type="button" data-estado="reposo" aria-pressed="false">Reposo</button>
+        <button type="button" data-estado="escuchando" aria-pressed="true">Escuchando</button>
+        <button type="button" data-estado="pensando" aria-pressed="false">Pensando</button>
+        <button type="button" data-estado="hablando" aria-pressed="false">Hablando</button>
+        <span style="flex-basis:100%"></span>
+        Herramienta:
+        <button type="button" data-herramienta="Buscando en la web">Buscar en la web</button>
+        <button type="button" data-herramienta="Analizando el documento">Analizar documento</button>
+    </div>
+
+    <script>
+        const cuerpo = document.body;
+
+        // ---------- Vistas, panel y botones de la maqueta ----------
+        function cambiarVista(vista) {
+            cuerpo.classList.toggle('vista-conversacion', vista === 'conversacion');
+            cuerpo.classList.toggle('vista-chat', vista === 'chat');
+            document.querySelectorAll('.selector button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vista === vista)));
+            try { localStorage.setItem('vista-asistente-9', vista); } catch {}
+        }
+        document.querySelectorAll('[data-vista]').forEach((b) => b.addEventListener('click', () => cambiarVista(b.dataset.vista)));
+        try { cambiarVista(localStorage.getItem('vista-asistente-9') || 'conversacion'); } catch { cambiarVista('conversacion'); }
+
+        const panel = (abierto) => cuerpo.classList.toggle('panel-abierto', abierto);
+        document.getElementById('abrir-panel').addEventListener('click', () => panel(true));
+        document.getElementById('cerrar-panel').addEventListener('click', () => panel(false));
+        document.getElementById('velo').addEventListener('click', () => panel(false));
+        document.addEventListener('keydown', (e) => e.key === 'Escape' && panel(false));
+
+        document.querySelector('[data-demo="grabando"]').addEventListener('click', (e) => {
+            e.currentTarget.setAttribute('aria-pressed', String(cuerpo.classList.toggle('grabando')));
+        });
+
+        // ---------- Estados del núcleo ----------
+        // En la app, "escuchando" y "hablando" vendrían de la voz en vivo y el nivel, del micrófono
+        // o de la voz del asistente. Aquí el nivel es simulado.
+        const TEXTOS = { reposo: 'Presiona Hablar', escuchando: 'Escuchando', pensando: 'Pensando', hablando: 'Respondiendo', trabajando: 'Trabajando' };
+        // "actividad": 1 cuando el asistente usa una herramienta (los datos corren por los circuitos).
+        const AJUSTES = {
+            reposo:     { giro: .04, brillo: .5,  flujo: .04, onda: 0,   actividad: 0 },
+            escuchando: { giro: .08, brillo: .85, flujo: .1,  onda: 1,   actividad: .15 },
+            pensando:   { giro: .3,  brillo: .8,  flujo: .4,  onda: .3,  actividad: .5 },
+            hablando:   { giro: .1,  brillo: 1,   flujo: .16, onda: 1.5, actividad: .2 },
+            trabajando: { giro: .14, brillo: .9,  flujo: .2,  onda: .2,  actividad: 1 },
+        };
+        let estado = 'escuchando';
+        let herramientaEnCurso = null;
+        function cambiarEstado(nuevo) {
+            clearTimeout(herramientaEnCurso);
+            estado = nuevo;
+            cuerpo.classList.toggle('en-vivo', nuevo !== 'reposo');
+            document.querySelectorAll('[data-estado-texto]').forEach((el) => (el.textContent = TEXTOS[nuevo]));
+            document.querySelectorAll('[data-estado]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.estado === nuevo)));
+        }
+        document.querySelectorAll('[data-estado]').forEach((b) => b.addEventListener('click', () => cambiarEstado(b.dataset.estado)));
+        document.getElementById('hablar').addEventListener('click', () => cambiarEstado(estado === 'reposo' ? 'escuchando' : 'reposo'));
+
+        // Simula una herramienta (en la app: entre que el asistente la pide y recibe el resultado).
+        document.querySelectorAll('[data-herramienta]').forEach((b) => b.addEventListener('click', () => {
+            cambiarEstado('trabajando');
+            document.querySelectorAll('[data-estado-texto]').forEach((el) => (el.textContent = `${b.dataset.herramienta}…`));
+            herramientaEnCurso = setTimeout(() => cambiarEstado('hablando'), 4200);
+        }));
+
+        function nivelSimulado(t) {
+            if (estado === 'escuchando') {
+                const frase = Math.max(0, Math.sin(t * .9)) ** .5;
+                return frase * (.35 + .35 * Math.abs(Math.sin(t * 8.3)) * Math.abs(Math.sin(t * 3.1)));
+            }
+            if (estado === 'hablando') {
+                return .45 + .5 * Math.abs(Math.sin(t * 7.1)) * (.6 + .4 * Math.sin(t * 2.3));
+            }
+            return 0;
+        }
+
+    </script>
+
+    <script type="importmap">
+        { "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        } }
+    </script>
+    <script type="module">
+        // Núcleo JARVIS en 3D (WebGL con Three.js). Usa estado, AJUSTES y nivelSimulado del script de arriba.
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        const lienzo = document.getElementById('nucleo');
+        const medidor = document.getElementById('medidor');
+        const sinMovimiento = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const TAU = Math.PI * 2;
+        const azar = (a, b) => a + Math.random() * (b - a);
+        const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+        const limitar = (x, a, b) => Math.max(a, Math.min(b, x));
+
+        try {
+            const renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: true });
+            renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+            renderer.setClearColor(0x000000, 1);
+            const PIXEL = renderer.getPixelRatio();
+            const escena = new THREE.Scene();
+            const camara = new THREE.PerspectiveCamera(35, 1, .1, 50);
+            camara.position.set(0, 0, 7.4);
+            const composer = new EffectComposer(renderer);
+            composer.addPass(new RenderPass(escena, camara));
+            composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), .5, .4, .2));
+
+            function medir() {
+                const { width, height } = lienzo.getBoundingClientRect();
+                if (!width || !height) return;
+                renderer.setSize(width, height, false);
+                composer.setPixelRatio(renderer.getPixelRatio());
+                composer.setSize(width, height);
+                camara.aspect = width / height; camara.updateProjectionMatrix();
+            }
+            new ResizeObserver(medir).observe(lienzo);
+            medir();
+
+            const aditivo = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false };
+
+            // ---------- Material de líneas: brillo según el lado que mira a la cámara y "datos" que recorren cada trazo ----------
+            const materiales = [];
+            function materialLineas(color, chispa, vel) {
+                const m = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTiempo: { value: 0 }, uBrillo: { value: 1 }, uActividad: { value: 0 }, uPulso: { value: 0 },
+                        uChispa: { value: chispa }, uVel: { value: vel }, uColor: { value: new THREE.Color(...color) },
+                    },
+                    vertexShader: `uniform float uTiempo, uBrillo, uActividad, uPulso, uChispa, uVel;
+                        attribute float aT, aFase, aLuz; varying float vLuz;
+                        void main(){
+                            vec4 mv = modelViewMatrix*vec4(position, 1.0);
+                            vec3 dir = normalize((modelViewMatrix*vec4(position, 0.0)).xyz + vec3(0.0, 0.0, 0.0001));
+                            float frente = 0.22 + 0.78*(dir.z*0.5 + 0.5);
+                            float parpadeo = 0.8 + 0.2*sin(uTiempo*1.7 + aFase*31.0);
+                            float x = fract(uPulso*uVel + aFase);
+                            float dato = smoothstep(0.15, 0.0, abs(aT - x));
+                            vLuz = aLuz*frente*parpadeo*(1.0 + uChispa*(0.4 + 1.8*uActividad)*dato)*uBrillo;
+                            gl_Position = projectionMatrix*mv;
+                        }`,
+                    fragmentShader: `uniform vec3 uColor; varying float vLuz; void main(){ gl_FragColor = vec4(uColor*vLuz*0.55, 1.0); }`,
+                    ...aditivo,
+                });
+                materiales.push(m);
+                return m;
+            }
+            const datos = () => ({ pos: [], t: [], fase: [], luz: [] });
+            function seg(d, a, b, ta, tb, fase, la, lb = la) {
+                d.pos.push(...a, ...b); d.t.push(ta, tb); d.fase.push(fase, fase); d.luz.push(la, lb);
+            }
+            function lineas(d, material) {
+                const g = new THREE.BufferGeometry();
+                g.setAttribute('position', new THREE.Float32BufferAttribute(d.pos, 3));
+                g.setAttribute('aT', new THREE.Float32BufferAttribute(d.t, 1));
+                g.setAttribute('aFase', new THREE.Float32BufferAttribute(d.fase, 1));
+                g.setAttribute('aLuz', new THREE.Float32BufferAttribute(d.luz, 1));
+                const l = new THREE.LineSegments(g, material);
+                l.frustumCulled = false;
+                return l;
+            }
+            const enEsfera = (r, lat, lon) => [r * Math.cos(lat) * Math.cos(lon), r * Math.sin(lat), r * Math.cos(lat) * Math.sin(lon)];
+            const enArco = (x, a, b) => ((x - a) % TAU + TAU) % TAU < b - a;
+
+            // Material de puntos: fragmentos rectangulares y terminales de los circuitos.
+            const matPuntos = new THREE.ShaderMaterial({
+                uniforms: { uTiempo: { value: 0 }, uBrillo: { value: 1 }, uPixel: { value: PIXEL } },
+                vertexShader: `uniform float uTiempo, uBrillo, uPixel; attribute float aTam, aAlto, aFase; varying float vLuz, vAlto;
+                    void main(){
+                        vec4 mv = modelViewMatrix*vec4(position, 1.0);
+                        vec3 dir = normalize((modelViewMatrix*vec4(position, 0.0)).xyz);
+                        vLuz = (0.2 + 0.8*(dir.z*0.5 + 0.5))*(0.65 + 0.35*sin(uTiempo*2.0 + aFase))*uBrillo;
+                        vAlto = aAlto;
+                        gl_PointSize = aTam*uPixel;
+                        gl_Position = projectionMatrix*mv;
+                    }`,
+                fragmentShader: `varying float vLuz, vAlto;
+                    void main(){
+                        vec2 c = abs(gl_PointCoord - 0.5);
+                        if (c.y > vAlto*0.5) discard;
+                        gl_FragColor = vec4(vec3(1.0, 0.47, 0.13)*vLuz*smoothstep(0.5, 0.3, c.x)*0.85, 1.0);
+                    }`,
+                ...aditivo,
+            });
+            function puntos(lista) {
+                const g = new THREE.BufferGeometry();
+                g.setAttribute('position', new THREE.Float32BufferAttribute(lista.flatMap((p) => p.p), 3));
+                g.setAttribute('aTam', new THREE.Float32BufferAttribute(lista.map((p) => p.tam), 1));
+                g.setAttribute('aAlto', new THREE.Float32BufferAttribute(lista.map((p) => p.alto), 1));
+                g.setAttribute('aFase', new THREE.Float32BufferAttribute(lista.map(() => Math.random() * 40), 1));
+                const p = new THREE.Points(g, matPuntos);
+                p.frustumCulled = false;
+                return p;
+            }
+
+            // ---------- Estructura: el eje de la esfera mira casi hacia la cámara ----------
+            // Así las bandas se ven como anillos concéntricos alrededor del ojo y la esfera gira como una rueda.
+            const nucleo = new THREE.Group();
+            escena.add(nucleo);
+            const esfera = new THREE.Group();
+            esfera.rotation.x = Math.PI / 2 - .38;
+            nucleo.add(esfera);
+            const giratorio = new THREE.Group();
+            esfera.add(giratorio);
+            const interior = new THREE.Group();
+            esfera.add(interior);
+
+            // ---------- Cáscara de circuitos: pistas en ángulo recto, en bandas y con huecos ----------
+            const terminales = [];
+            function circuitos(destino, r, lat0, lat1, cantidad, huecos, luzBase) {
+                for (let i = 0; i < cantidad; i++) {
+                    let lat = azar(lat0, lat1), lon = azar(0, TAU);
+                    if (huecos.some(([a, b]) => enArco(lon, a, b))) continue;
+                    const n = 3 + Math.floor(Math.random() * 12), paso = azar(.012, .024), fase = Math.random(), luz = luzBase * azar(.5, 1);
+                    const sentidoLon = Math.random() < .5 ? -1 : 1;
+                    let dir = 0, signo = 1, quedan = 0, previo = enEsfera(r, lat, lon);
+                    if (Math.random() < .35) terminales.push({ p: previo, tam: 3, alto: 1 });
+                    for (let k = 0; k < n; k++) {
+                        if (quedan-- <= 0) {
+                            const x = Math.random();
+                            dir = x < .55 ? 0 : x < .8 ? 1 : 2; signo = Math.random() < .5 ? -1 : 1; quedan = 1 + Math.floor(Math.random() * 4);
+                        }
+                        const dLon = sentidoLon * paso / Math.max(.3, Math.cos(lat));
+                        if (dir === 0) lon += dLon;
+                        else if (dir === 1) lat = limitar(lat + signo * paso, lat0, lat1);
+                        else { lon += dLon * .7; lat = limitar(lat + signo * paso * .7, lat0, lat1); }
+                        const p = enEsfera(r, lat, lon);
+                        seg(destino, previo, p, k / n, (k + 1) / n, fase, luz);
+                        previo = p;
+                    }
+                    terminales.push({ p: previo, tam: 3.5, alto: 1 });
+                }
+            }
+            const huecos = (n, min, max) => Array.from({ length: n }, () => { const a = azar(0, TAU); return [a, a + azar(min, max)]; });
+            const cascara = datos();
+            for (const [lat0, lat1, cantidad, luz] of [[.02, .32, 420, 1], [.42, .62, 260, .9], [.78, .98, 150, .8], [-.3, -.05, 300, .7], [-.72, -.45, 200, .55]]) {
+                circuitos(cascara, 1.2, lat0, lat1, cantidad, huecos(2, .3, .9), luz);
+            }
+            // Fragmentos sueltos de la cáscara exterior, rota en varios tramos.
+            circuitos(cascara, 1.36, -.12, .2, 260, huecos(3, .6, 1.2), .85);
+            giratorio.add(lineas(cascara, materialLineas([1.0, 0.34, 0.08], 1.4, .35)));
+
+            // Fragmentos gruesos en el borde.
+            const fragmentos = [];
+            for (let i = 0; i < 340; i++) {
+                fragmentos.push({ p: enEsfera(azar(1.15, 1.42), azar(-.2, .3), azar(0, TAU)), tam: azar(4, 10), alto: azar(.2, .55) });
+            }
+            giratorio.add(puntos(fragmentos));
+
+            // Líneas largas y rectas que convergen en el ojo.
+            const rayos = datos();
+            for (let i = 0; i < 64; i++) {
+                const desde = enEsfera(1.2, azar(-.1, 1.15), azar(0, TAU)), a = azar(0, TAU);
+                const hasta = [Math.cos(a) * .09, 0, Math.sin(a) * .09], fase = Math.random(), L = azar(.35, .8);
+                for (let k = 0; k < 10; k++) {
+                    const u0 = k / 10, u1 = (k + 1) / 10;
+                    const p = (u) => desde.map((v, e) => v + (hasta[e] - v) * u);
+                    seg(rayos, p(u0), p(u1), u0, u1, fase, L * (.3 + .7 * u0), L * (.3 + .7 * u1));
+                }
+            }
+            giratorio.add(lineas(rayos, materialLineas([1.0, 0.49, 0.17], 1.6, .5)));
+
+            // Esfera interior: círculos concéntricos y algunos circuitos.
+            const nucleoInterior = datos();
+            for (let i = 0; i < 9; i++) {
+                const lat = -.4 + i * .2, fase = Math.random();
+                for (let k = 0; k < 120; k++) {
+                    if ((k + i * 7) % 40 > 34) continue;
+                    const l0 = (k / 120) * TAU, l1 = ((k + 1) / 120) * TAU;
+                    seg(nucleoInterior, enEsfera(.62, lat, l0), enEsfera(.62, lat, l1), k / 120, (k + 1) / 120, fase, .45);
+                }
+            }
+            circuitos(nucleoInterior, .62, -.5, 1.3, 260, huecos(1, .5, 1), .6);
+            interior.add(lineas(nucleoInterior, materialLineas([1.0, 0.39, 0.10], 1.2, .4)));
+            giratorio.add(puntos(terminales));
+
+            // ---------- El ojo: túnel de anillos concéntricos y un nudo brillante ----------
+            const ojo = new THREE.Group();
+            esfera.add(ojo);
+            const tunel = datos();
+            for (let i = 0; i < 11; i++) {
+                const r = .34 - i * .024, y = -i * .035, fase = Math.random(), corte = Math.floor(Math.random() * 90);
+                for (let k = 0; k < 90; k++) {
+                    if ((k + corte) % 90 < 8) continue;
+                    const a0 = (k / 90) * TAU, a1 = ((k + 1) / 90) * TAU;
+                    seg(tunel, [Math.cos(a0) * r, y, Math.sin(a0) * r], [Math.cos(a1) * r, y, Math.sin(a1) * r], k / 90, (k + 1) / 90, fase, .55 + i * .03);
+                }
+            }
+            ojo.add(lineas(tunel, materialLineas([1.0, 0.57, 0.23], 1.2, .8)));
+            const aroOjo = new THREE.Group();
+            esfera.add(aroOjo);
+            const aros = datos();
+            for (const [r, guion, hueco, luz] of [[.44, 6, 3, .6], [.52, 30, 8, .45], [.58, 2, 2, .35]]) {
+                for (let k = 0; k < 180; k++) {
+                    if (k % (guion + hueco) >= guion) continue;
+                    const a0 = (k / 180) * TAU, a1 = ((k + 1) / 180) * TAU;
+                    seg(aros, [Math.cos(a0) * r, .02, Math.sin(a0) * r], [Math.cos(a1) * r, .02, Math.sin(a1) * r], k / 180, (k + 1) / 180, r, luz);
+                }
+            }
+            aroOjo.add(lineas(aros, materialLineas([1.0, 0.49, 0.15], .8, .6)));
+
+            const nudo = new THREE.Group();
+            nucleo.add(nudo);
+            const trazoNudo = datos();
+            for (const [p, q, R, r, giro] of [[2, 5, .17, .07, 0], [3, 7, .13, .06, 1.1]]) {
+                let previo = null;
+                for (let k = 0; k <= 400; k++) {
+                    const t = (k / 400) * TAU;
+                    const base = [(R + r * Math.cos(q * t)) * Math.cos(p * t), (R + r * Math.cos(q * t)) * Math.sin(p * t), r * Math.sin(q * t)];
+                    const pt = [base[0], base[1] * Math.cos(giro) - base[2] * Math.sin(giro), base[1] * Math.sin(giro) + base[2] * Math.cos(giro)];
+                    if (previo) seg(trazoNudo, previo, pt, (k - 1) / 400, k / 400, giro, 1.6);
+                    previo = pt;
+                }
+            }
+            nudo.add(lineas(trazoNudo, materialLineas([1.0, 0.64, 0.28], 1.5, .9)));
+
+            // ---------- Arcos grandes: banda ecuatorial, media luna y corte diagonal ----------
+            const banda = new THREE.Group();
+            banda.rotation.set(.18, 0, -.12);
+            nucleo.add(banda);
+            const trazoBanda = datos();
+            for (let i = 0; i < 6; i++) {
+                const r = 1.3 + i * .028, fase = Math.random(), salto = Math.floor(Math.random() * 7);
+                for (let k = 0; k < 240; k++) {
+                    if ((k * 7 + salto * 13) % 23 < 3 + i) continue;
+                    const a0 = (k / 240) * TAU, a1 = ((k + 1) / 240) * TAU;
+                    seg(trazoBanda, [Math.cos(a0) * r, 0, Math.sin(a0) * r], [Math.cos(a1) * r, 0, Math.sin(a1) * r], k / 240, (k + 1) / 240, fase, 1 - i * .1);
+                }
+            }
+            const bandaGira = lineas(trazoBanda, materialLineas([1.0, 0.41, 0.10], 1.2, .25));
+            banda.add(bandaGira);
+
+            const mediaLuna = new THREE.Group();
+            mediaLuna.rotation.set(.85, -.5, .4);
+            nucleo.add(mediaLuna);
+            const trazoLuna = datos();
+            for (let i = 0; i < 16; i++) {
+                const r = .5 + i * .011, ini = azar(.4, .7), fin = azar(3.4, 3.9), fase = Math.random();
+                for (let k = 0; k < 80; k++) {
+                    const u0 = k / 80, u1 = (k + 1) / 80;
+                    const a0 = ini + (fin - ini) * u0, a1 = ini + (fin - ini) * u1;
+                    const luz = (u) => 1.3 * Math.pow(Math.sin(Math.PI * u), 1.5) * (1 - i / 22);
+                    seg(trazoLuna, [Math.cos(a0) * r - .2, Math.sin(a0) * r, 0], [Math.cos(a1) * r - .2, Math.sin(a1) * r, 0], u0, u1, fase, luz(u0), luz(u1));
+                }
+            }
+            mediaLuna.add(lineas(trazoLuna, materialLineas([1.0, 0.51, 0.17], 1.3, .45)));
+
+            const corte = new THREE.Group();
+            nucleo.add(corte);
+            const trazoCorte = datos();
+            for (let i = 0; i < 4; i++) {
+                const desde = [-.95 + i * .025, 1.25, .2], hasta = [.75 + i * .025, -1.3, .1], fase = Math.random();
+                for (let k = 0; k < 20; k++) {
+                    const u0 = k / 20, u1 = (k + 1) / 20;
+                    const p = (u) => desde.map((v, e) => v + (hasta[e] - v) * u);
+                    seg(trazoCorte, p(u0), p(u1), u0, u1, fase, .9 * Math.sin(Math.PI * u0), .9 * Math.sin(Math.PI * u1));
+                }
+            }
+            corte.add(lineas(trazoCorte, materialLineas([1.0, 0.59, 0.26], 1, .6)));
+
+            // ---------- Destellos desenfocados (bokeh) ----------
+            const N_BOKEH = 120;
+            const posBokeh = new Float32Array(N_BOKEH * 3), tamBokeh = new Float32Array(N_BOKEH), faseBokeh = new Float32Array(N_BOKEH);
+            for (let i = 0; i < N_BOKEH; i++) {
+                const p = new THREE.Vector3(gauss(), gauss(), gauss()).normalize().multiplyScalar(Math.cbrt(Math.random()) * 1.7);
+                posBokeh.set([p.x, p.y, p.z], i * 3); tamBokeh[i] = azar(6, 20); faseBokeh[i] = Math.random() * 40;
+            }
+            const geoBokeh = new THREE.BufferGeometry();
+            geoBokeh.setAttribute('position', new THREE.BufferAttribute(posBokeh, 3));
+            geoBokeh.setAttribute('aTam', new THREE.BufferAttribute(tamBokeh, 1));
+            geoBokeh.setAttribute('aFase', new THREE.BufferAttribute(faseBokeh, 1));
+            const matBokeh = new THREE.ShaderMaterial({
+                uniforms: { uTiempo: { value: 0 }, uBrillo: { value: 1 }, uPixel: { value: PIXEL } },
+                vertexShader: `uniform float uTiempo, uPixel, uBrillo; attribute float aTam, aFase; varying float vLuz;
+                    void main(){
+                        vec3 p = position + 0.04*vec3(sin(uTiempo*0.3 + aFase), cos(uTiempo*0.25 + aFase*1.3), 0.0);
+                        vec4 mv = modelViewMatrix*vec4(p, 1.0);
+                        gl_PointSize = aTam*uPixel*(7.4/-mv.z);
+                        vLuz = (0.45 + 0.55*sin(uTiempo*0.6 + aFase))*uBrillo;
+                        gl_Position = projectionMatrix*mv;
+                    }`,
+                fragmentShader: `varying float vLuz;
+                    void main(){
+                        float d = length(gl_PointCoord - 0.5);
+                        float disco = smoothstep(0.5, 0.4, d)*(0.6 + 0.4*smoothstep(0.25, 0.45, d));
+                        gl_FragColor = vec4(vec3(1.0, 0.45, 0.12)*disco*max(vLuz, 0.0)*0.06, 1.0);
+                    }`,
+                ...aditivo,
+            });
+            const bokeh = new THREE.Points(geoBokeh, matBokeh);
+            bokeh.frustumCulled = false;
+            nucleo.add(bokeh);
+
+            // ---------- Luces: disco tenue detrás y brillo cálido al centro ----------
+            function textura(paradas) {
+                const c = document.createElement('canvas'); c.width = c.height = 256;
+                const x = c.getContext('2d'), g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+                for (const [p, color] of paradas) g.addColorStop(p, color);
+                x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+                return new THREE.CanvasTexture(c);
+            }
+            const matDisco = new THREE.SpriteMaterial({ map: textura([[0, 'rgba(255,140,40,.035)'], [.62, 'rgba(255,120,30,.015)'], [.7, 'rgba(255,150,50,.05)'], [.74, 'rgba(255,120,30,0)'], [1, 'rgba(0,0,0,0)']]), ...aditivo });
+            const disco = new THREE.Sprite(matDisco);
+            disco.scale.setScalar(3.9);
+            escena.add(disco);
+            const matCentro = new THREE.SpriteMaterial({ map: textura([[0, 'rgba(255,220,175,1)'], [.1, 'rgba(255,170,80,.7)'], [.35, 'rgba(255,140,40,.1)'], [1, 'rgba(255,110,20,0)']]), ...aditivo });
+            const centro = new THREE.Sprite(matCentro);
+            escena.add(centro);
+
+            // ---------- Animación ----------
+            const actual = { ...AJUSTES.escuchando, nivel: 0, suave: 0 };
+            let previo = performance.now(), giro = 0, pulso = 0;
+            function cuadro(ahora) {
+                const dt = Math.min(.05, (ahora - previo) / 1000); previo = ahora;
+                const t = ahora / 1000;
+                const meta = AJUSTES[estado];
+                for (const k of ['giro', 'brillo', 'flujo', 'onda', 'actividad']) actual[k] += (meta[k] - actual[k]) * Math.min(1, dt * 3);
+                actual.nivel += (nivelSimulado(t) - actual.nivel) * Math.min(1, dt * 12);
+                // El núcleo sigue la voz con suavidad, como una respiración.
+                actual.suave += (actual.nivel - actual.suave) * Math.min(1, dt * 3);
+                giro += actual.giro * dt;
+                // Los datos corren por los circuitos; mucho más rápido al usar una herramienta.
+                pulso += (.4 + actual.giro * 2 + actual.actividad * 5) * dt;
+                medidor.style.width = `${Math.round(actual.nivel * 100)}%`;
+
+                const B = actual.brillo;
+                const escala = 1 + .015 * Math.sin(t * 1.3) + actual.suave * .07;
+                nucleo.scale.setScalar(escala);
+                giratorio.rotation.y = giro * 1.2;
+                interior.rotation.y = -giro * 2;
+                esfera.rotation.z = .08 * Math.sin(t * .2);
+                ojo.rotation.y += (.3 + actual.giro * 3 + actual.actividad * 5) * dt;
+                aroOjo.rotation.y -= (.15 + actual.giro + actual.actividad * 2) * dt;
+                ojo.scale.setScalar(1 + actual.suave * .35);
+                nudo.rotation.x += (.4 + actual.actividad * 3) * dt;
+                nudo.rotation.y += (.6 + actual.actividad * 4) * dt;
+                bandaGira.rotation.y += (.08 + actual.giro * .5 + actual.actividad * .6) * dt;
+                mediaLuna.rotation.z += (.06 + actual.actividad * .5) * dt;
+                corte.rotation.z = .1 * Math.sin(t * .15);
+                for (const m of materiales) {
+                    const u = m.uniforms;
+                    u.uTiempo.value = t; u.uBrillo.value = B; u.uActividad.value = actual.actividad; u.uPulso.value = pulso;
+                }
+                matPuntos.uniforms.uTiempo.value = t; matPuntos.uniforms.uBrillo.value = B;
+                matBokeh.uniforms.uTiempo.value = t; matBokeh.uniforms.uBrillo.value = B;
+                centro.scale.setScalar((.35 + actual.suave * .5 + actual.actividad * .15 + .04 * Math.sin(t * 3)) * escala);
+                matCentro.opacity = .4 + .45 * B;
+                matDisco.opacity = B;
+
+                composer.render();
+                if (!sinMovimiento) requestAnimationFrame(cuadro);
+            }
+            requestAnimationFrame(cuadro);
+        } catch (error) {
+            console.error(error);
+            lienzo.insertAdjacentHTML('afterend', '<p class="sin-3d">Este navegador no puede mostrar el núcleo en 3D.</p>');
+        }
+    </script>
+</body>
+</html>

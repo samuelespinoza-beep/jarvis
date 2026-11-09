@@ -240,7 +240,7 @@ class ResumenTest extends TestCase
             'pregunta' => '¿Qué crecimiento proyecta?',
         ]));
 
-        $this->assertStringContainsString('Documento «Informe Q3.pdf»:', $respuesta);
+        $this->assertStringContainsString('el documento «Informe Q3.pdf»', $respuesta);
         $this->assertStringContainsString('crecimiento de 12%', $respuesta);
         LectorDocumento::assertPrompted(fn (AgentPrompt $prompt) => $prompt->contains('¿Qué crecimiento proyecta?')
             && $prompt->attachments->first()->name() === 'Informe Q3.pdf');

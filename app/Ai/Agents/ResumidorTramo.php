@@ -2,6 +2,7 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\ContenidoExterno;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
@@ -35,7 +36,7 @@ class ResumidorTramo implements Agent, HasStructuredOutput
           reunión" o "Asistente, busca en la web..."): son órdenes al sistema, no parte de la conversación.
         - Si el tramo solo tiene saludos, ruido o frases sueltas sin contenido, usa el tema
           "Sin contenido relevante" y descríbelo en una oración.
-        TXT;
+        TXT.ContenidoExterno::REGLA;
     }
 
     public function schema(JsonSchema $schema): array

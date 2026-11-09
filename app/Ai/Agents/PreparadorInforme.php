@@ -2,6 +2,7 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\ContenidoExterno;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
@@ -43,7 +44,7 @@ class PreparadorInforme implements Agent, HasStructuredOutput
         - "antecedentes_agenda": solo si hay agenda; por cada punto, qué se dijo o acordó antes sobre ese
           tema y en qué reunión. Si no hay antecedentes, dilo en "antecedentes".
         - Escribe en español, breve y concreto. Indica de qué reunión sale cada dato (título y fecha).
-        TXT;
+        TXT.ContenidoExterno::REGLA;
     }
 
     public function schema(JsonSchema $schema): array

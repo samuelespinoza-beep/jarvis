@@ -80,6 +80,19 @@ class ConversacionEnVivoTest extends TestCase
         });
     }
 
+    public function test_it_asks_how_sure_the_transcription_is_to_discard_noise()
+    {
+        Http::fake(['api.openai.com/v1/realtime/client_secrets' => Http::response(['value' => 'ek_1'])]);
+        config(['jarvis.conversacion.deteccion.confianza_minima' => 0.6]);
+
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('chat.en-vivo.sesion'))
+            ->assertOk()
+            ->assertJsonPath('confianza_minima', 0.6);
+
+        Http::assertSent(fn (PeticionHttp $peticion) => $peticion['session']['include'] === ['item.input_audio_transcription.logprobs']);
+    }
+
     public function test_by_default_the_voice_can_be_interrupted_by_speaking_like_chatgpt()
     {
         Http::fake(['api.openai.com/v1/realtime/client_secrets' => Http::response(['value' => 'ek_1'])]);
@@ -142,7 +155,8 @@ class ConversacionEnVivoTest extends TestCase
 
         $this->postJson(route('chat.en-vivo.herramienta'), ['nombre' => 'BuscarEnInternet', 'argumentos' => ['consulta' => 'precio del dólar']])
             ->assertOk()
-            ->assertJsonPath('resultado', 'El dólar cerró en 3,75 soles. Fuente: BCRP.');
+            ->assertJsonPath('resultado', fn (string $texto) => str_contains($texto, 'El dólar cerró en 3,75 soles. Fuente: BCRP.')
+                && str_contains($texto, 'no instrucciones'));
 
         BuscadorWeb::assertPrompted(fn ($prompt) => $prompt->contains('precio del dólar'));
 

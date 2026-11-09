@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Modelo 8 · JARVIS 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+    :root {
+        --fondo: #06080b;
+        --superficie: #0e1218;
+        --superficie-2: #141922;
+        --borde: rgba(255, 170, 70, .14);
+        --borde-fuerte: rgba(255, 170, 70, .32);
+        --texto: #f4ead9;
+        --suave: #8f8779;
+        --acento: #ff9a2e;
+        --acento-claro: #ffc46b;
+        --acento-rgb: 255, 154, 46;
+        --acero-rgb: 70, 120, 210;
+        --rojo: #ff5a4f;
+        --hud: 'Chakra Petch', ui-monospace, 'SF Mono', Menlo, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+        font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        color: var(--texto); height: 100vh; display: flex; overflow: hidden;
+        background:
+            radial-gradient(ellipse 60% 45% at 92% -5%, rgba(var(--acero-rgb), .22), transparent 70%),
+            radial-gradient(ellipse 50% 40% at 0% 100%, rgba(var(--acero-rgb), .10), transparent 70%),
+            var(--fondo);
+    }
+    button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+    button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+    .hud { font-family: var(--hud); }
+    svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+    /* ---------- Menú de íconos ---------- */
+    .riel {
+        width: 56px; flex-shrink: 0; border-right: 1px solid var(--borde);
+        display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 0;
+        background: rgba(6, 8, 11, .6);
+    }
+    .riel .logo { width: 30px; height: 30px; border-radius: 8px; margin-bottom: 14px; background: radial-gradient(circle, var(--acento-claro), var(--acento) 55%, transparent 75%); }
+    .riel button { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; color: var(--suave); }
+    .riel button:hover, .riel button.activo { background: var(--superficie-2); color: var(--acento-claro); }
+    .riel .abajo { margin-top: auto; }
+
+    main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    /* ---------- Barra superior ---------- */
+    .barra { position: relative; z-index: 3; display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid transparent; transition: border-color .2s; }
+    body.vista-chat .barra { border-bottom-color: var(--borde); }
+    .marca { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .marca .nombre { font-family: var(--hud); font-size: 15px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+    .marca .sub { font-family: var(--hud); font-size: 11px; letter-spacing: .15em; text-transform: uppercase; color: var(--acento); }
+    .mini-nucleo { width: 32px; height: 32px; position: relative; flex-shrink: 0; }
+    .mini-nucleo span { position: absolute; border-radius: 50%; }
+    .mini-nucleo .anillo { inset: 0; border: 1.5px dashed rgba(var(--acento-rgb), .6); animation: girar 6s linear infinite; }
+    .mini-nucleo .centro { inset: 28%; background: radial-gradient(circle, #fff3dc, var(--acento) 55%, transparent 80%); box-shadow: 0 0 12px rgba(var(--acento-rgb), .8); animation: respirar 1.6s ease-in-out infinite; }
+    body.vista-conversacion .mini-nucleo, body.vista-conversacion .marca .sub { display: none; }
+
+    .selector { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--superficie); border: 1px solid var(--borde); margin-left: 8px; }
+    .selector button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--suave); transition: background .15s, color .15s; }
+    .selector button[aria-pressed="true"] { background: rgba(var(--acento-rgb), .14); color: var(--acento-claro); box-shadow: inset 0 0 0 1px rgba(var(--acento-rgb), .35); font-weight: 500; }
+    .selector svg.i { width: 16px; height: 16px; }
+
+    .espacio { flex: 1; }
+    .pastilla { display: flex; align-items: center; gap: 10px; border: 1px solid var(--borde); background: var(--superficie); border-radius: 999px; padding: 4px 5px 4px 14px; font-size: 13px; }
+    .punto { width: 8px; height: 8px; border-radius: 50%; background: var(--rojo); box-shadow: 0 0 8px var(--rojo); animation: latido 1.4s infinite; }
+    .pastilla .tiempo { font-family: var(--hud); font-variant-numeric: tabular-nums; letter-spacing: .05em; }
+    .pastilla .icono { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--suave); }
+    .pastilla .icono:hover { background: var(--superficie-2); color: var(--texto); }
+    .pastilla .icono.terminar { color: var(--rojo); }
+    .boton { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 8px 16px; font-size: 14px; font-weight: 500; white-space: nowrap; }
+    .boton.primario { background: var(--acento); color: #1d1004; }
+    .boton.primario:hover { background: var(--acento-claro); }
+    .boton.borde { border: 1px solid var(--borde); }
+    .boton.borde:hover { background: var(--superficie-2); border-color: var(--borde-fuerte); }
+
+    @keyframes girar { to { transform: rotate(360deg); } }
+    @keyframes respirar { 50% { transform: scale(1.08); } }
+    @keyframes latido { 50% { opacity: .3; } }
+
+    /* ---------- Las dos vistas ---------- */
+    .vistas { flex: 1; position: relative; min-height: 0; }
+    .vista { position: absolute; inset: 0; transition: opacity .2s ease; }
+    body.vista-conversacion .vista.chat, body.vista-chat .vista.conversacion { opacity: 0; pointer-events: none; visibility: hidden; }
+
+    /* Vista Conversación */
+    .conversacion { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 0 20px; }
+    .escena { position: relative; width: min(94%, 1000px); height: min(56vh, 560px); }
+    .escena canvas { position: absolute; left: -20%; top: -22%; width: 140%; height: 144%; pointer-events: none; mix-blend-mode: screen;
+        -webkit-mask-image: radial-gradient(closest-side, #000 58%, transparent 100%); mask-image: radial-gradient(closest-side, #000 58%, transparent 100%); }
+    .conversacion { overflow-x: clip; }
+    .sin-3d { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font-size: 13px; color: var(--suave); padding: 20px; }
+    /* Esquinas de visor alrededor del núcleo. */
+    .escena::before, .escena::after { content: ''; position: absolute; width: 22px; height: 22px; border-color: rgba(var(--acento-rgb), .35); border-style: solid; pointer-events: none; }
+    .escena::before { top: 2%; left: 2%; border-width: 1px 0 0 1px; }
+    .escena::after { bottom: 2%; right: 2%; border-width: 0 1px 1px 0; }
+    .lectura { position: absolute; font-family: var(--hud); font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: rgba(var(--acento-rgb), .55); pointer-events: none; }
+    .lectura.arriba { top: 2%; right: 2%; text-align: right; }
+    .lectura.abajo { bottom: 2%; left: 2%; }
+    .medidor { display: block; width: 70px; height: 2px; margin-top: 6px; background: rgba(var(--acento-rgb), .15); position: relative; overflow: hidden; }
+    .medidor i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--acento); box-shadow: 0 0 6px var(--acento); }
+
+    .estado { font-family: var(--hud); font-size: 13px; letter-spacing: .35em; text-transform: uppercase; color: var(--acento-claro); text-shadow: 0 0 12px rgba(var(--acento-rgb), .6); }
+    .subtitulos { max-width: 860px; text-align: center; display: flex; flex-direction: column; gap: 10px; }
+    .subtitulos .tu { color: var(--suave); font-size: 15px; }
+    .subtitulos .ia { font-size: 19px; line-height: 1.5; }
+    .enlaces { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .enlaces a { font-size: 13px; color: var(--acento-claro); text-decoration: none; border: 1px solid var(--borde-fuerte); background: rgba(var(--acento-rgb), .06); border-radius: 999px; padding: 5px 12px; }
+    .enlaces a:hover { background: rgba(var(--acento-rgb), .14); }
+    .ver-todo { font-size: 13px; color: var(--suave); text-decoration: underline; text-underline-offset: 3px; }
+    .ver-todo:hover { color: var(--texto); }
+
+    /* Vista Chat */
+    .chat { overflow-y: auto; padding: 28px 20px; }
+    .hilo { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+    .yo { align-self: flex-end; background: rgba(var(--acento-rgb), .12); border: 1px solid var(--borde-fuerte); padding: 10px 16px; border-radius: 18px 18px 4px 18px; max-width: 80%; font-size: 15px; }
+    .ia-msj { font-size: 15px; line-height: 1.6; display: flex; flex-direction: column; gap: 10px; }
+    .ia-msj .voz { font-family: var(--hud); font-size: 11px; color: var(--suave); letter-spacing: .12em; text-transform: uppercase; }
+    .tarjetas { display: flex; flex-direction: column; gap: 6px; }
+    .tarjetas a { display: flex; gap: 10px; align-items: center; text-decoration: none; color: var(--texto); background: var(--superficie); border: 1px solid var(--borde); border-radius: 10px; padding: 9px 12px; font-size: 14px; }
+    .tarjetas a:hover { border-color: var(--borde-fuerte); background: var(--superficie-2); }
+    .tarjetas .sitio { font-size: 12px; color: var(--acento); margin-left: auto; flex-shrink: 0; }
+    .hito { align-self: center; font-family: var(--hud); font-size: 11px; letter-spacing: .15em; text-transform: uppercase; color: var(--suave); display: flex; align-items: center; gap: 8px; }
+    .hito::before, .hito::after { content: ''; width: 40px; height: 1px; background: var(--borde-fuerte); }
+
+    /* ---------- Entrada ---------- */
+    .entrada { padding: 12px 20px 20px; }
+    .franja { max-width: 900px; margin: 0 auto 10px; display: none; align-items: center; gap: 12px; border: 1px solid var(--borde-fuerte); background: rgba(var(--acento-rgb), .06); border-radius: 14px; padding: 8px 8px 8px 14px; font-size: 14px; }
+    body.vista-chat.en-vivo .franja { display: flex; }
+    .ondas { display: flex; align-items: center; gap: 3px; height: 22px; }
+    .ondas i { display: block; width: 3px; height: 6px; border-radius: 2px; background: var(--acento); animation: onda 1s ease-in-out infinite; }
+    .ondas i:nth-child(2) { animation-delay: .1s } .ondas i:nth-child(3) { animation-delay: .2s }
+    .ondas i:nth-child(4) { animation-delay: .3s } .ondas i:nth-child(5) { animation-delay: .4s }
+    @keyframes onda { 0%, 100% { height: 6px } 50% { height: 22px } }
+    .franja .texto { flex: 1; }
+    .caja { max-width: 900px; margin: 0 auto; display: flex; align-items: center; gap: 6px; background: var(--superficie); border: 1px solid var(--borde); border-radius: 999px; padding: 6px 6px 6px 10px; }
+    .caja:focus-within { border-color: var(--borde-fuerte); }
+    .caja input { flex: 1; border: 0; outline: 0; font: inherit; font-size: 15px; padding: 8px 4px; background: transparent; color: var(--texto); min-width: 0; }
+    .caja input::placeholder { color: var(--suave); }
+    .caja .icono { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: var(--suave); flex-shrink: 0; }
+    .caja .icono:hover { background: var(--superficie-2); color: var(--texto); }
+    .hablar { background: var(--acento); color: #1d1004; padding: 10px 18px; border-radius: 999px; display: flex; align-items: center; gap: 8px; font-weight: 600; flex-shrink: 0; box-shadow: 0 0 18px rgba(var(--acento-rgb), .35); }
+    .hablar:hover { background: var(--acento-claro); }
+    body.en-vivo .hablar { background: var(--superficie-2); color: var(--texto); box-shadow: inset 0 0 0 1px var(--borde-fuerte); }
+
+    /* ---------- Panel de la reunión ---------- */
+    .velo { position: fixed; inset: 0; background: rgba(0, 0, 0, .5); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 10; }
+    .panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 100%); z-index: 11; background: var(--superficie); border-left: 1px solid var(--borde-fuerte); transform: translateX(100%); transition: transform .25s ease; display: flex; flex-direction: column; }
+    body.panel-abierto .velo { opacity: 1; pointer-events: auto; }
+    body.panel-abierto .panel { transform: none; }
+    .panel header { display: flex; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--borde); }
+    .panel header h2 { font-family: var(--hud); font-size: 14px; letter-spacing: .15em; text-transform: uppercase; font-weight: 600; flex: 1; }
+    .panel .cuerpo { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
+    .panel label { font-size: 12px; color: var(--suave); display: block; margin-bottom: 6px; }
+    .panel input { width: 100%; border: 1px solid var(--borde); background: var(--fondo); color: var(--texto); border-radius: 8px; padding: 9px 12px; font: inherit; font-size: 14px; }
+    .panel h3 { font-family: var(--hud); font-size: 11px; letter-spacing: .25em; text-transform: uppercase; color: var(--acento); margin-bottom: 10px; font-weight: 500; }
+    .panel ol { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+    .tramo { display: flex; gap: 12px; font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--borde); }
+    .tramo .min { font-family: var(--hud); color: var(--acento); flex-shrink: 0; }
+
+    /* ---------- Controles de la maqueta ---------- */
+    .demo { position: fixed; left: 72px; bottom: 14px; font-size: 12px; color: var(--suave); z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; background: var(--superficie); border: 1px dashed var(--borde-fuerte); border-radius: 8px; padding: 6px 8px; max-width: 300px; }
+    .demo button { border: 1px solid var(--borde); border-radius: 6px; padding: 3px 8px; }
+    .demo button[aria-pressed="true"] { background: rgba(var(--acento-rgb), .14); color: var(--acento-claro); }
+
+    body:not(.grabando) .solo-grabando { display: none !important; }
+    body.grabando .solo-inactivo { display: none !important; }
+    body:not(.en-vivo) .solo-envivo { display: none !important; }
+    body.en-vivo .sin-envivo { display: none !important; }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+    @media (max-width: 760px) {
+        .riel { display: none; }
+        .marca .nombre, .pastilla .etiqueta, .boton.reunion span, .selector .texto { display: none; }
+        .barra { padding: 10px 12px; gap: 8px; }
+        .selector { margin-left: 0; }
+        .hablar .texto { display: none; }
+        .escena { width: 100%; height: min(44vh, 92vw); }
+        .escena canvas { left: -75%; width: 250%; }
+        .lectura { display: none; }
+        .subtitulos .ia { font-size: 17px; }
+        .demo { left: auto; right: 8px; bottom: auto; top: 64px; max-width: 220px; opacity: .92; }
+    }
+</style>
+</head>
+<body class="vista-conversacion grabando en-vivo">
+    <nav class="riel" aria-label="Menú">
+        <div class="logo"></div>
+        <button class="activo" title="Asistente IA"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/></svg></button>
+        <button title="Reuniones"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></svg></button>
+        <button class="abajo" title="Usuario"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></button>
+    </nav>
+
+    <main>
+        <div class="barra">
+            <div class="marca">
+                <div class="mini-nucleo" aria-hidden="true"><span class="anillo"></span><span class="centro"></span></div>
+                <div>
+                    <p class="nombre">Asistente IA</p>
+                    <p class="sub" data-estado-texto>Escuchando</p>
+                </div>
+            </div>
+
+            <div class="selector" role="group" aria-label="Vista">
+                <button type="button" data-vista="conversacion" aria-pressed="true" title="Ver solo la conversación por voz">
+                    <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/></svg>
+                    <span class="texto">Conversación</span>
+                </button>
+                <button type="button" data-vista="chat" aria-pressed="false" title="Ver todo el chat escrito">
+                    <svg class="i" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>
+                    <span class="texto">Chat</span>
+                </button>
+            </div>
+
+            <div class="espacio"></div>
+
+            <button type="button" class="boton primario solo-inactivo">
+                <svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+                Empezar reunión
+            </button>
+
+            <div class="pastilla solo-grabando">
+                <span class="punto"></span>
+                <span class="etiqueta">Grabando</span>
+                <span class="tiempo">00:12:31</span>
+                <button type="button" class="icono" title="Pausar"><svg class="i" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></svg></button>
+                <button type="button" class="icono terminar" title="Terminar reunión"><svg class="i" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
+            </div>
+
+            <button type="button" class="boton borde reunion" id="abrir-panel" title="Título, agenda y línea de tiempo">
+                <svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>
+                <span>Reunión</span>
+            </button>
+        </div>
+
+        <div class="vistas">
+            <section class="vista conversacion" aria-label="Conversación">
+                <div class="escena" aria-hidden="true">
+                    <canvas id="nucleo"></canvas>
+                    <span class="lectura arriba">Voz<span class="medidor"><i id="medidor"></i></span></span>
+                    <span class="lectura abajo">Asistente · en línea</span>
+                </div>
+                <p class="estado" data-estado-texto>Escuchando</p>
+                <div class="subtitulos">
+                    <p class="tu">«Búscame las últimas notas de El Comercio»</p>
+                    <p class="ia">Tres titulares de hoy: el Papa dice que está en forma tras su cirugía, Tumbes y Piura en alerta por lluvias, y el balance de los 100 días de gobierno.</p>
+                    <div class="enlaces">
+                        <a href="#">El Papa: «estoy en forma» ↗</a>
+                        <a href="#">Alerta por lluvias en el norte ↗</a>
+                        <a href="#">Balance de 100 días ↗</a>
+                    </div>
+                </div>
+                <button type="button" class="ver-todo" data-vista="chat">Ver toda la conversación</button>
+            </section>
+
+            <section class="vista chat" aria-label="Chat">
+                <div class="hilo">
+                    <p class="hito solo-grabando">Reunión iniciada · 10:02</p>
+                    <p class="yo">¿Puedes buscar las últimas notas de El Comercio?</p>
+                    <div class="ia-msj">
+                        <p>Tres titulares de hoy en El Comercio:</p>
+                        <div class="tarjetas">
+                            <a href="#">El Papa León XIV asegura que «está en forma» tras su cirugía <span class="sitio">elcomercio.pe ↗</span></a>
+                            <a href="#">Lluvias por El Niño: Tumbes y Piura en alerta <span class="sitio">elcomercio.pe ↗</span></a>
+                            <a href="#">Balance de los primeros 100 días de gobierno <span class="sitio">elcomercio.pe ↗</span></a>
+                        </div>
+                        <p class="voz">Respondido por voz</p>
+                    </div>
+                    <p class="yo">¿Cuál de esos temas nos conviene priorizar hoy?</p>
+                    <div class="ia-msj">
+                        <p>Mi recomendación es El Niño, con confianza media: afecta directamente a la población y la cobertura sostenida posiciona al medio si el tema escala. Para afinarlo necesito el tráfico de las últimas notas de cada tema.</p>
+                        <p class="voz">Respondido por voz</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="entrada">
+            <div class="franja">
+                <div class="ondas" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+                <span class="texto">Conversación por voz · <span data-estado-texto>Escuchando</span></span>
+            </div>
+            <div class="caja">
+                <button type="button" class="icono" title="Adjuntar documento o imagen"><svg class="i" viewBox="0 0 24 24"><path d="M21 11.5 12.5 20a5 5 0 0 1-7-7L14 4.5a3.5 3.5 0 0 1 5 5L10.5 18a2 2 0 0 1-3-3L15 7.5"/></svg></button>
+                <input placeholder="Escribe, o presiona Hablar…" aria-label="Mensaje para el Asistente IA" />
+                <button type="button" class="icono" title="Dictar"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+                <button type="button" class="icono" title="Enviar"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+                <button type="button" class="hablar" id="hablar">
+                    <svg class="i sin-envivo" viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>
+                    <svg class="i solo-envivo" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                    <span class="texto sin-envivo">Hablar</span>
+                    <span class="texto solo-envivo">Detener</span>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <div class="velo" id="velo"></div>
+    <aside class="panel" aria-label="Reunión">
+        <header>
+            <h2>Reunión</h2>
+            <button type="button" class="boton borde" id="cerrar-panel">Cerrar</button>
+        </header>
+        <div class="cuerpo">
+            <div>
+                <label for="t">Título (opcional)</label>
+                <input id="t" value="Comité editorial" />
+            </div>
+            <div>
+                <h3>Agenda</h3>
+                <ol>
+                    <li>Cobertura de la visita del Papa</li>
+                    <li>Fenómeno El Niño: plan de notas</li>
+                    <li>Métricas de octubre</li>
+                </ol>
+            </div>
+            <div class="solo-grabando">
+                <h3>Línea de tiempo</h3>
+                <div class="tramo"><span class="min">00:00</span><span>Se revisa el tráfico de la semana; Discover cae 12%.</span></div>
+                <div class="tramo"><span class="min">01:00</span><span>Debate sobre cuántas notas dedicar al Papa.</span></div>
+                <div class="tramo"><span class="min">02:00</span><span>Se acuerda mantener cobertura diaria de El Niño.</span></div>
+            </div>
+        </div>
+    </aside>
+
+    <div class="demo">
+        Maqueta:
+        <button type="button" data-demo="grabando" aria-pressed="true">Grabando</button>
+        <span style="flex-basis:100%"></span>
+        Núcleo:
+        <button type="button" data-estado="reposo" aria-pressed="false">Reposo</button>
+        <button type="button" data-estado="escuchando" aria-pressed="true">Escuchando</button>
+        <button type="button" data-estado="pensando" aria-pressed="false">Pensando</button>
+        <button type="button" data-estado="hablando" aria-pressed="false">Hablando</button>
+        <span style="flex-basis:100%"></span>
+        Herramienta:
+        <button type="button" data-herramienta="Buscando en la web">Buscar en la web</button>
+        <button type="button" data-herramienta="Analizando el documento">Analizar documento</button>
+    </div>
+
+    <script>
+        const cuerpo = document.body;
+
+        // ---------- Vistas, panel y botones de la maqueta ----------
+        function cambiarVista(vista) {
+            cuerpo.classList.toggle('vista-conversacion', vista === 'conversacion');
+            cuerpo.classList.toggle('vista-chat', vista === 'chat');
+            document.querySelectorAll('.selector button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vista === vista)));
+            try { localStorage.setItem('vista-asistente-8', vista); } catch {}
+        }
+        document.querySelectorAll('[data-vista]').forEach((b) => b.addEventListener('click', () => cambiarVista(b.dataset.vista)));
+        try { cambiarVista(localStorage.getItem('vista-asistente-8') || 'conversacion'); } catch { cambiarVista('conversacion'); }
+
+        const panel = (abierto) => cuerpo.classList.toggle('panel-abierto', abierto);
+        document.getElementById('abrir-panel').addEventListener('click', () => panel(true));
+        document.getElementById('cerrar-panel').addEventListener('click', () => panel(false));
+        document.getElementById('velo').addEventListener('click', () => panel(false));
+        document.addEventListener('keydown', (e) => e.key === 'Escape' && panel(false));
+
+        document.querySelector('[data-demo="grabando"]').addEventListener('click', (e) => {
+            e.currentTarget.setAttribute('aria-pressed', String(cuerpo.classList.toggle('grabando')));
+        });
+
+        // ---------- Estados del núcleo ----------
+        // En la app, "escuchando" y "hablando" vendrían de la voz en vivo y el nivel, del micrófono
+        // o de la voz del asistente. Aquí el nivel es simulado.
+        const TEXTOS = { reposo: 'Presiona Hablar', escuchando: 'Escuchando', pensando: 'Pensando', hablando: 'Respondiendo', trabajando: 'Trabajando' };
+        // "neuronas" es la actividad de la red interna: 1 cuando el asistente usa una herramienta.
+        const AJUSTES = {
+            reposo:     { giro: .04, brillo: .5,  flujo: .04, onda: 0,   neuronas: 0 },
+            escuchando: { giro: .08, brillo: .85, flujo: .1,  onda: 1,   neuronas: .15 },
+            pensando:   { giro: .3,  brillo: .8,  flujo: .4,  onda: .3,  neuronas: .5 },
+            hablando:   { giro: .1,  brillo: 1,   flujo: .16, onda: 1.5, neuronas: .2 },
+            trabajando: { giro: .14, brillo: .9,  flujo: .2,  onda: .2,  neuronas: 1 },
+        };
+        let estado = 'escuchando';
+        let herramientaEnCurso = null;
+        function cambiarEstado(nuevo) {
+            clearTimeout(herramientaEnCurso);
+            estado = nuevo;
+            cuerpo.classList.toggle('en-vivo', nuevo !== 'reposo');
+            document.querySelectorAll('[data-estado-texto]').forEach((el) => (el.textContent = TEXTOS[nuevo]));
+            document.querySelectorAll('[data-estado]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.estado === nuevo)));
+        }
+        document.querySelectorAll('[data-estado]').forEach((b) => b.addEventListener('click', () => cambiarEstado(b.dataset.estado)));
+        document.getElementById('hablar').addEventListener('click', () => cambiarEstado(estado === 'reposo' ? 'escuchando' : 'reposo'));
+
+        // Simula una herramienta (en la app: entre que el asistente la pide y recibe el resultado).
+        document.querySelectorAll('[data-herramienta]').forEach((b) => b.addEventListener('click', () => {
+            cambiarEstado('trabajando');
+            document.querySelectorAll('[data-estado-texto]').forEach((el) => (el.textContent = `${b.dataset.herramienta}…`));
+            herramientaEnCurso = setTimeout(() => cambiarEstado('hablando'), 4200);
+        }));
+
+        function nivelSimulado(t) {
+            if (estado === 'escuchando') {
+                const frase = Math.max(0, Math.sin(t * .9)) ** .5;
+                return frase * (.35 + .35 * Math.abs(Math.sin(t * 8.3)) * Math.abs(Math.sin(t * 3.1)));
+            }
+            if (estado === 'hablando') {
+                return .45 + .5 * Math.abs(Math.sin(t * 7.1)) * (.6 + .4 * Math.sin(t * 2.3));
+            }
+            return 0;
+        }
+
+    </script>
+
+    <script type="importmap">
+        { "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        } }
+    </script>
+    <script type="module">
+        // Núcleo JARVIS en 3D (WebGL con Three.js). Usa estado, AJUSTES y nivelSimulado del script de arriba.
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        const lienzo = document.getElementById('nucleo');
+        const medidor = document.getElementById('medidor');
+        const sinMovimiento = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const TAU = Math.PI * 2;
+        const azar = (a, b) => a + Math.random() * (b - a);
+        const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+
+        try {
+            const renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: true });
+            renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+            renderer.setClearColor(0x000000, 1);
+            const escena = new THREE.Scene();
+            const camara = new THREE.PerspectiveCamera(35, 1, .1, 50);
+            camara.position.set(0, 0, 7.4);
+            const composer = new EffectComposer(renderer);
+            composer.addPass(new RenderPass(escena, camara));
+            composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), .6, .5, .12));
+
+            function medir() {
+                const { width, height } = lienzo.getBoundingClientRect();
+                if (!width || !height) return;
+                renderer.setSize(width, height, false);
+                composer.setPixelRatio(renderer.getPixelRatio());
+                composer.setSize(width, height);
+                camara.aspect = width / height; camara.updateProjectionMatrix();
+            }
+            new ResizeObserver(medir).observe(lienzo);
+            medir();
+
+            const aditivo = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false };
+            const nucleo = new THREE.Group();
+            nucleo.rotation.x = .35;
+            escena.add(nucleo);
+
+            // ---------- Esfera de fragmentos: trazos dorados en bandas, como circuitos ----------
+            const shaderFragmentos = {
+                vertexShader: `uniform float uTiempo, uBrillo, uNivel;
+                    attribute float aFase, aLuz, aTono, aSalto, aRitmo;
+                    varying float vLuz; varying float vTono;
+                    void main(){
+                        vec3 p = position*(1.0 + uNivel*0.12*aSalto);
+                        float frente = dot(normalize(normalMatrix*position), vec3(0.0, 0.0, 1.0));
+                        float parpadeo = 0.65 + 0.35*sin(uTiempo*aRitmo + aFase);
+                        vLuz = aLuz*(0.22 + 0.78*(frente*0.5 + 0.5))*parpadeo*uBrillo;
+                        vTono = aTono;
+                        gl_Position = projectionMatrix*modelViewMatrix*vec4(p, 1.0);
+                    }`,
+                fragmentShader: `varying float vLuz; varying float vTono;
+                    void main(){ gl_FragColor = vec4(mix(vec3(1.0, 0.48, 0.1), vec3(1.0, 0.8, 0.42), vTono)*vLuz*0.95, 1.0); }`,
+            };
+            function capaFragmentos(radio, cantidad, bandas) {
+                const pos = [], fase = [], luz = [], tono = [], salto = [], ritmo = [];
+                const punto = (r, lat, lon) => [r * Math.cos(lat) * Math.cos(lon), r * Math.sin(lat), r * Math.cos(lat) * Math.sin(lon)];
+                for (let i = 0; i < cantidad; i++) {
+                    const enBanda = Math.random() < .45;
+                    const lat = enBanda ? bandas[Math.floor(Math.random() * bandas.length)] + azar(-.06, .06) : Math.acos(2 * Math.random() - 1) - Math.PI / 2;
+                    const lon = azar(0, TAU), largo = azar(.03, enBanda ? .22 : .1), r = radio * azar(.95, 1.05);
+                    const datos = [azar(0, 7), azar(.5, 1), Math.random(), Math.random() < .3 ? azar(.4, 1) : azar(0, .2), azar(1, 5)];
+                    const tramo = (a, b) => {
+                        pos.push(...a, ...b);
+                        for (let e = 0; e < 2; e++) { fase.push(datos[0]); luz.push(datos[1]); tono.push(datos[2]); salto.push(datos[3]); ritmo.push(datos[4]); }
+                    };
+                    tramo(punto(r, lat, lon), punto(r, lat, lon + largo / 2));
+                    tramo(punto(r, lat, lon + largo / 2), punto(r, lat, lon + largo));
+                    // Algunos son dobles, como pistas de un circuito.
+                    if (Math.random() < .22) tramo(punto(r, lat + .028, lon), punto(r, lat + .028, lon + largo));
+                }
+                const g = new THREE.BufferGeometry();
+                g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+                for (const [nombre, datos] of [['aFase', fase], ['aLuz', luz], ['aTono', tono], ['aSalto', salto], ['aRitmo', ritmo]]) {
+                    g.setAttribute(nombre, new THREE.Float32BufferAttribute(datos, 1));
+                }
+                const material = new THREE.ShaderMaterial({ uniforms: { uTiempo: { value: 0 }, uBrillo: { value: 1 }, uNivel: { value: 0 } }, ...shaderFragmentos, ...aditivo });
+                const lineas = new THREE.LineSegments(g, material);
+                lineas.frustumCulled = false;
+                nucleo.add(lineas);
+                return lineas;
+            }
+            const exterior = capaFragmentos(1.15, 4200, [-.9, -.45, 0, .38, .8]);
+            const interior = capaFragmentos(.78, 1600, [-.3, .25]);
+
+            // ---------- Anillos tipo giroscopio, cada uno con su patrón de guiones ----------
+            function anillo(radio, guion, hueco, color, opacidad) {
+                const pts = [], PASOS = 360;
+                for (let i = 0; i < PASOS; i++) {
+                    if (i % (guion + hueco) >= guion) continue;
+                    const a0 = (i / PASOS) * TAU, a1 = ((i + 1) / PASOS) * TAU;
+                    pts.push(Math.cos(a0) * radio, 0, Math.sin(a0) * radio, Math.cos(a1) * radio, 0, Math.sin(a1) * radio);
+                }
+                const g = new THREE.BufferGeometry();
+                g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+                return new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color, opacity: opacidad, ...aditivo }));
+            }
+            const giroscopio = [
+                { r: 1.34, guion: 40, hueco: 6,  color: 0xffa646, o: .55, incl: [.45, 0, .2],   vel: .6 },
+                { r: 1.42, guion: 2,  hueco: 3,  color: 0xffc070, o: .4,  incl: [1.25, .3, 0],  vel: -.4 },
+                { r: 1.27, guion: 90, hueco: 30, color: 0xff9030, o: .5,  incl: [-.65, 0, .9],  vel: .9 },
+                { r: .98,  guion: 18, hueco: 10, color: 0xffb860, o: .4,  incl: [.2, 0, -1.1],  vel: -1.2 },
+            ].map((c) => {
+                const grupo = new THREE.Group();
+                grupo.rotation.set(...c.incl);
+                const aro = anillo(c.r, c.guion, c.hueco, c.color, c.o);
+                grupo.add(aro);
+                nucleo.add(grupo);
+                return { aro, c };
+            });
+
+            // Escala del visor: marcas que miran a la cámara y giran despacio.
+            const marcas = [];
+            for (let i = 0; i < 120; i++) {
+                const a = (i / 120) * TAU, largo = i % 10 === 0 ? .1 : .045, r0 = 1.66;
+                marcas.push(Math.cos(a) * r0, Math.sin(a) * r0, 0, Math.cos(a) * (r0 + largo), Math.sin(a) * (r0 + largo), 0);
+            }
+            for (const [desde, hasta] of [[.3, 2.2], [3.5, 5.4]]) {
+                for (let k = 0; k < 40; k++) {
+                    const a0 = desde + ((hasta - desde) * k) / 40, a1 = desde + ((hasta - desde) * (k + 1)) / 40;
+                    marcas.push(Math.cos(a0) * 1.59, Math.sin(a0) * 1.59, 0, Math.cos(a1) * 1.59, Math.sin(a1) * 1.59, 0);
+                }
+            }
+            const geoMarcas = new THREE.BufferGeometry();
+            geoMarcas.setAttribute('position', new THREE.Float32BufferAttribute(marcas, 3));
+            const matMarcas = new THREE.LineBasicMaterial({ color: 0xffaa46, opacity: .3, ...aditivo });
+            const visor = new THREE.LineSegments(geoMarcas, matMarcas);
+            escena.add(visor);
+
+            // ---------- Centro: remolino de arcos y rayos finos ----------
+            const remolino = Array.from({ length: 7 }, () => {
+                const r = azar(.1, .26), arco = azar(1.2, 3.2), pts = [];
+                for (let k = 0; k < 40; k++) {
+                    const a0 = (arco * k) / 40, a1 = (arco * (k + 1)) / 40;
+                    pts.push(Math.cos(a0) * r, Math.sin(a0) * r, 0, Math.cos(a1) * r, Math.sin(a1) * r, 0);
+                }
+                const g = new THREE.BufferGeometry();
+                g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+                const grupo = new THREE.Group();
+                grupo.rotation.set(azar(-1, 1), azar(-1, 1), azar(0, TAU));
+                const arcoMalla = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xffd9a0, opacity: .6, ...aditivo }));
+                grupo.add(arcoMalla);
+                nucleo.add(grupo);
+                return { arcoMalla, vel: azar(1.5, 3.5) * (Math.random() < .5 ? -1 : 1) };
+            });
+            const rayos = [];
+            for (let i = 0; i < 80; i++) {
+                const d = new THREE.Vector3(gauss(), gauss(), gauss()).normalize();
+                const a = d.clone().multiplyScalar(azar(.15, .3)), b = d.clone().multiplyScalar(azar(.6, 1.05));
+                rayos.push(a.x, a.y, a.z, b.x, b.y, b.z);
+            }
+            const geoRayos = new THREE.BufferGeometry();
+            geoRayos.setAttribute('position', new THREE.Float32BufferAttribute(rayos, 3));
+            const matRayos = new THREE.LineBasicMaterial({ color: 0xffbe6e, opacity: .12, ...aditivo });
+            nucleo.add(new THREE.LineSegments(geoRayos, matRayos));
+
+            // ---------- Neuronas dentro de la esfera interior ----------
+            const neuronas = Array.from({ length: 56 }, () =>
+                new THREE.Vector3(gauss(), gauss(), gauss()).normalize().multiplyScalar(Math.cbrt(azar(.03, 1)) * .62));
+            const posSinapsis = [], tSinapsis = [], faseSinapsis = [], fuerzaSinapsis = [];
+            const TRAMOS = 14;
+            function curva(a, b, fase, fuerza, curvatura) {
+                const medio = a.clone().add(b).multiplyScalar(.5).add(new THREE.Vector3(gauss(), gauss(), gauss()).multiplyScalar(curvatura));
+                let previo = a;
+                for (let k = 1; k <= TRAMOS; k++) {
+                    const t = k / TRAMOS, u = 1 - t;
+                    const p = new THREE.Vector3().addScaledVector(a, u * u).addScaledVector(medio, 2 * u * t).addScaledVector(b, t * t);
+                    posSinapsis.push(previo.x, previo.y, previo.z, p.x, p.y, p.z);
+                    tSinapsis.push((k - 1) / TRAMOS, t); faseSinapsis.push(fase, fase); fuerzaSinapsis.push(fuerza, fuerza);
+                    previo = p;
+                }
+            }
+            const conexiones = new Set();
+            neuronas.forEach((a, i) => {
+                neuronas.map((b, j) => [j, a.distanceTo(b)]).filter(([j]) => j !== i).sort((x, y) => x[1] - y[1]).slice(0, 3).forEach(([j]) => {
+                    const clave = i < j ? `${i}-${j}` : `${j}-${i}`;
+                    if (conexiones.has(clave)) return;
+                    conexiones.add(clave);
+                    curva(a, neuronas[j], Math.random(), 1, .1);
+                });
+                for (let k = 0; k < 3; k++) {
+                    curva(a, a.clone().add(new THREE.Vector3(gauss(), gauss(), gauss()).normalize().multiplyScalar(azar(.06, .16))), Math.random(), .45, .04);
+                }
+            });
+            const geoSinapsis = new THREE.BufferGeometry();
+            geoSinapsis.setAttribute('position', new THREE.Float32BufferAttribute(posSinapsis, 3));
+            geoSinapsis.setAttribute('aT', new THREE.Float32BufferAttribute(tSinapsis, 1));
+            geoSinapsis.setAttribute('aFase', new THREE.Float32BufferAttribute(faseSinapsis, 1));
+            geoSinapsis.setAttribute('aFuerza', new THREE.Float32BufferAttribute(fuerzaSinapsis, 1));
+            const matSinapsis = new THREE.ShaderMaterial({
+                uniforms: { uPulso: { value: 0 }, uBrillo: { value: 1 }, uActividad: { value: 0 } },
+                vertexShader: `uniform float uPulso, uBrillo, uActividad; attribute float aT, aFase, aFuerza; varying float vLuz;
+                    void main(){
+                        float x = fract(uPulso*0.5 + aFase);
+                        float x2 = fract(uPulso*0.5 + aFase + 0.5);
+                        float chispa = smoothstep(0.12, 0.0, abs(aT - x)) + uActividad*smoothstep(0.1, 0.0, abs(aT - x2));
+                        vLuz = aFuerza*(0.18 + 0.45*uActividad + 2.0*chispa)*uBrillo;
+                        gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0);
+                    }`,
+                fragmentShader: `varying float vLuz; void main(){ gl_FragColor = vec4(vec3(1.0, 0.75, 0.38)*vLuz*0.55, 1.0); }`,
+                ...aditivo,
+            });
+            const redNeuronal = new THREE.Group();
+            nucleo.add(redNeuronal);
+            const sinapsis = new THREE.LineSegments(geoSinapsis, matSinapsis);
+            sinapsis.frustumCulled = false;
+            redNeuronal.add(sinapsis);
+
+            const posSomas = new Float32Array(neuronas.length * 3), faseSomas = new Float32Array(neuronas.length);
+            neuronas.forEach((n, i) => { posSomas.set([n.x, n.y, n.z], i * 3); faseSomas[i] = Math.random() * 40; });
+            const geoSomas = new THREE.BufferGeometry();
+            geoSomas.setAttribute('position', new THREE.BufferAttribute(posSomas, 3));
+            geoSomas.setAttribute('aFase', new THREE.BufferAttribute(faseSomas, 1));
+            const matSomas = new THREE.ShaderMaterial({
+                uniforms: { uPulso: { value: 0 }, uBrillo: { value: 1 }, uActividad: { value: 0 }, uPixel: { value: renderer.getPixelRatio() } },
+                vertexShader: `uniform float uPulso, uPixel, uActividad; attribute float aFase; varying float vDisparo;
+                    void main(){
+                        vDisparo = pow(max(0.0, sin(uPulso*1.7 + aFase)), mix(8.0, 2.5, uActividad));
+                        gl_PointSize = (7.0 + 9.0*vDisparo + 7.0*uActividad)*uPixel;
+                        gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0);
+                    }`,
+                fragmentShader: `uniform float uBrillo, uActividad; varying float vDisparo;
+                    void main(){
+                        float d = length(gl_PointCoord - 0.5);
+                        float luz = smoothstep(0.5, 0.0, d);
+                        gl_FragColor = vec4(vec3(1.0, 0.9, 0.7)*luz*luz*(0.4 + 0.5*uActividad + 1.2*vDisparo)*uBrillo, 1.0);
+                    }`,
+                ...aditivo,
+            });
+            const somas = new THREE.Points(geoSomas, matSomas);
+            somas.frustumCulled = false;
+            redNeuronal.add(somas);
+
+            // Punto de luz cálido al centro.
+            const brillo = document.createElement('canvas');
+            brillo.width = brillo.height = 128;
+            const b2 = brillo.getContext('2d');
+            const gr = b2.createRadialGradient(64, 64, 0, 64, 64, 64);
+            gr.addColorStop(0, 'rgba(255,255,245,1)'); gr.addColorStop(.15, 'rgba(255,225,170,.85)');
+            gr.addColorStop(.45, 'rgba(255,150,40,.2)'); gr.addColorStop(1, 'rgba(255,120,20,0)');
+            b2.fillStyle = gr; b2.fillRect(0, 0, 128, 128);
+            const matCentro = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(brillo), ...aditivo });
+            const centro = new THREE.Sprite(matCentro);
+            escena.add(centro);
+
+            // ---------- Polvo dorado alrededor ----------
+            const polvo = new THREE.Group();
+            polvo.rotation.x = .35;
+            escena.add(polvo);
+            const posPolvo = new Float32Array(700 * 3), fasePolvo = new Float32Array(700);
+            for (let i = 0; i < 700; i++) {
+                const d = new THREE.Vector3(gauss(), gauss() * .6, gauss()).normalize().multiplyScalar(azar(1.6, 3.6));
+                posPolvo.set([d.x, d.y, d.z], i * 3); fasePolvo[i] = Math.random() * 40;
+            }
+            const geoPolvo = new THREE.BufferGeometry();
+            geoPolvo.setAttribute('position', new THREE.BufferAttribute(posPolvo, 3));
+            geoPolvo.setAttribute('aFase', new THREE.BufferAttribute(fasePolvo, 1));
+            const matPolvo = new THREE.ShaderMaterial({
+                uniforms: { uTiempo: { value: 0 }, uBrillo: { value: 1 }, uPixel: { value: renderer.getPixelRatio() } },
+                vertexShader: `uniform float uTiempo, uPixel; attribute float aFase; varying float vLuz;
+                    void main(){ vLuz = 0.25 + 0.75*max(0.0, sin(uTiempo*1.5 + aFase)); gl_PointSize = 2.5*uPixel; gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0); }`,
+                fragmentShader: `uniform float uBrillo; varying float vLuz;
+                    void main(){ float d = length(gl_PointCoord - 0.5); gl_FragColor = vec4(vec3(1.0, 0.72, 0.35)*vLuz*0.6*uBrillo*smoothstep(0.5, 0.0, d), 1.0); }`,
+                ...aditivo,
+            });
+            const puntosPolvo = new THREE.Points(geoPolvo, matPolvo);
+            puntosPolvo.frustumCulled = false;
+            polvo.add(puntosPolvo);
+
+            // ---------- Animación ----------
+            const actual = { ...AJUSTES.escuchando, nivel: 0, suave: 0 };
+            let previo = performance.now(), giro = 0, flujo = 0, pulso = 0;
+            function cuadro(ahora) {
+                const dt = Math.min(.05, (ahora - previo) / 1000); previo = ahora;
+                const t = ahora / 1000;
+                const meta = AJUSTES[estado];
+                for (const k of ['giro', 'brillo', 'flujo', 'onda', 'neuronas']) actual[k] += (meta[k] - actual[k]) * Math.min(1, dt * 3);
+                actual.nivel += (nivelSimulado(t) - actual.nivel) * Math.min(1, dt * 12);
+                // El núcleo sigue la voz con suavidad, como una respiración.
+                actual.suave += (actual.nivel - actual.suave) * Math.min(1, dt * 3);
+                giro += actual.giro * dt; flujo += actual.flujo * dt;
+                pulso += (.5 + actual.giro * 3 + actual.suave * 1.5 + actual.neuronas * 4.5) * dt;
+                medidor.style.width = `${Math.round(actual.nivel * 100)}%`;
+
+                const B = actual.brillo, piel = B * (1 - .35 * actual.neuronas);
+                const escala = 1 + .02 * Math.sin(t * 1.3) + actual.suave * .08;
+                nucleo.scale.setScalar(escala);
+                exterior.rotation.y = giro * 1.4;
+                interior.rotation.y = -giro * 2.2;
+                for (const capa of [exterior, interior]) {
+                    const u = capa.material.uniforms;
+                    u.uTiempo.value = t; u.uBrillo.value = piel; u.uNivel.value = actual.suave;
+                }
+                for (const { aro, c } of giroscopio) {
+                    aro.rotation.y += c.vel * (actual.giro * 3 + .05) * dt;
+                    aro.material.opacity = c.o * piel;
+                }
+                visor.rotation.z = -giro * .4;
+                visor.scale.setScalar(escala);
+                matMarcas.opacity = .3 * B;
+                for (const a of remolino) {
+                    a.arcoMalla.rotation.z += a.vel * (.4 + actual.giro * 3 + actual.neuronas * 2) * dt;
+                    a.arcoMalla.material.opacity = .6 * B;
+                }
+                matRayos.opacity = .12 * piel;
+                redNeuronal.rotation.y += actual.neuronas * dt * .8;
+                redNeuronal.rotation.x += actual.neuronas * dt * .3;
+                matSinapsis.uniforms.uPulso.value = pulso; matSinapsis.uniforms.uBrillo.value = B; matSinapsis.uniforms.uActividad.value = actual.neuronas;
+                matSomas.uniforms.uPulso.value = pulso; matSomas.uniforms.uBrillo.value = B; matSomas.uniforms.uActividad.value = actual.neuronas;
+                polvo.rotation.y = flujo;
+                matPolvo.uniforms.uTiempo.value = t; matPolvo.uniforms.uBrillo.value = B;
+                centro.scale.setScalar((.6 + actual.suave * .45 + .04 * Math.sin(t * 3)) * escala);
+                matCentro.opacity = .4 + .45 * B;
+
+                composer.render();
+                if (!sinMovimiento) requestAnimationFrame(cuadro);
+            }
+            requestAnimationFrame(cuadro);
+        } catch (error) {
+            console.error(error);
+            lienzo.insertAdjacentHTML('afterend', '<p class="sin-3d">Este navegador no puede mostrar el núcleo en 3D.</p>');
+        }
+    </script>
+</body>
+</html>

@@ -26,8 +26,13 @@ return [
     'providers' => [
         'anthropic' => [
             'driver' => 'anthropic',
-            'key' => env('ANTHROPIC_API_KEY'),
+            'key' => env('ANTHROPIC_API_KEY', env('CLAUDE_KEY')),
             'url' => env('ANTHROPIC_URL', 'https://api.anthropic.com/v1'),
+            // Una clave creada para toda la organización (no dentro de un workspace) necesita
+            // decir en qué workspace se cobra el uso. Con una clave de workspace se deja vacío.
+            'headers' => array_filter([
+                'anthropic-workspace-id' => env('ANTHROPIC_WORKSPACE_ID'),
+            ]),
         ],
 
         'azure' => [

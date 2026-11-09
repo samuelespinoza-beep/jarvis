@@ -35,7 +35,8 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
-            'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            // El menú empieza plegado a íconos; queda abierto solo si el usuario lo abrió.
+            'sidebarOpen' => $request->cookie('sidebar_state') === 'true',
         ];
     }
 }

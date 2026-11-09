@@ -2,6 +2,7 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\ContenidoExterno;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Promptable;
@@ -29,6 +30,6 @@ class LectorDocumento implements Agent
         - Incluye las cifras, fechas, nombres y plazos que pidan, tal como aparecen.
         - Si te piden revisarlo o resumirlo en general, da de qué trata, sus temas centrales y sus datos clave.
         - Sé completo pero sin relleno: otro asistente usará tu respuesta para contestar al usuario.
-        TXT;
+        TXT.ContenidoExterno::REGLA."\n".ContenidoExterno::AVISO;
     }
 }

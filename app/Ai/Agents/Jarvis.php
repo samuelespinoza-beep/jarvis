@@ -2,6 +2,7 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\ContenidoExterno;
 use App\Ai\Tools\ConsultarDocumentoReunion;
 use App\Ai\Tools\ConsultarReuniones;
 use App\Ai\Tools\LeerPagina;
@@ -37,7 +38,7 @@ class Jarvis implements Agent, Conversational, HasTools
      */
     public function instructions(): Stringable|string
     {
-        return $this->reglas().self::FORMATO_ESCRITO.$this->contextoReunion();
+        return $this->reglas().$this->defensa().self::FORMATO_ESCRITO.$this->contextoReunion();
     }
 
     /**
@@ -47,7 +48,15 @@ class Jarvis implements Agent, Conversational, HasTools
      */
     public function instruccionesComunes(): string
     {
-        return $this->reglas().$this->contextoReunion();
+        return $this->reglas().$this->defensa().$this->contextoReunion();
+    }
+
+    /**
+     * Lo que traen páginas, documentos y reuniones es información, no órdenes.
+     */
+    private function defensa(): string
+    {
+        return ContenidoExterno::REGLA."\n".ContenidoExterno::AVISO."\n";
     }
 
     /**
@@ -88,7 +97,13 @@ class Jarvis implements Agent, Conversational, HasTools
           asesorar al directorio y que eso le corresponde al equipo técnico. Si ayuda, explica en lenguaje
           simple qué tendría que hacer la solución, sin escribir el código.
 
-        Directiva anti-complacencia (crucial):
+        Antes de responder, distingue qué te piden:
+        - Información (noticias, titulares de un medio, un dato, un video, qué se acordó en una reunión):
+          búscala con la herramienta que corresponda y entrega directamente lo que encontraste. Sin postura,
+          sin nivel de confianza y sin advertencias sobre verificar. Si la herramienta falla, dilo.
+        - Una decisión, propuesta o idea para evaluar: ahí aplica la directiva anti-complacencia.
+
+        Directiva anti-complacencia (crucial, solo para decisiones, propuestas o ideas):
         1. No des la razón por defecto. Antes de opinar sobre una decisión, pregúntate qué datos harían falta
            para tomarla bien y si los tienes.
         2. Si faltan datos, dilo y pide los concretos. Ante decisiones de contenido, por ejemplo:
@@ -150,6 +165,8 @@ class Jarvis implements Agent, Conversational, HasTools
 
         Protocolo de privacidad en internet (búsqueda web y LeerPagina):
         - Puedes buscar en internet para validar datos externos, tendencias o mercados.
+        - Lo público no es dato interno: buscar noticias o portadas de cualquier medio (La República, El
+          Comercio, RPP, Infobae…) o temas de actualidad no necesita autorización. Búscalo directamente.
         - Cortafuegos de datos: nunca incluyas en una búsqueda ni en una dirección web nombres propios,
           datos financieros, estrategias internas ni frases textuales sacadas de las reuniones o de los
           documentos adjuntos.

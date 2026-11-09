@@ -8,18 +8,26 @@ import type { BreadcrumbItem } from '@/types';
 
 type Props = {
     breadcrumbs?: BreadcrumbItem[];
+    sinEncabezado?: boolean;
 };
 
 withDefaults(defineProps<Props>(), {
     breadcrumbs: () => [],
+    sinEncabezado: false,
 });
 </script>
 
 <template>
     <AppShell variant="sidebar">
         <AppSidebar />
-        <AppContent variant="sidebar" class="min-w-0 overflow-x-clip">
-            <AppSidebarHeader :breadcrumbs="breadcrumbs" />
+        <AppContent
+            variant="sidebar"
+            class="fondo-nucleo min-w-0 overflow-x-clip"
+        >
+            <AppSidebarHeader
+                v-if="!sinEncabezado"
+                :breadcrumbs="breadcrumbs"
+            />
             <slot />
         </AppContent>
         <Toaster />

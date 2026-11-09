@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import NucleoJarvis from '@/components/jarvis/NucleoJarvis.vue';
+import NucleoCircuitos from '@/components/jarvis/NucleoCircuitos.vue';
 
 defineProps<{
     title?: string;
@@ -9,19 +9,12 @@ defineProps<{
 
 <template>
     <div
-        class="relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-background p-6 text-foreground md:p-10"
+        class="fondo-nucleo relative flex min-h-svh flex-col items-center justify-center overflow-hidden bg-hud-fondo p-6 text-hud-texto md:p-10"
     >
-        <div
-            class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(var(--hud-acento-rgb),0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(var(--hud-acento-rgb),0.05)_1px,transparent_1px)] bg-[size:32px_32px]"
-        />
-        <div
-            class="pointer-events-none absolute top-1/2 left-1/2 size-[60rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(var(--hud-acento-rgb),0.12),transparent_60%)]"
-        />
-
         <div class="relative flex w-full max-w-sm flex-col gap-6">
             <div class="flex flex-col items-center gap-3 text-center">
-                <div class="w-40">
-                    <NucleoJarvis activo />
+                <div class="size-48 sm:size-56">
+                    <NucleoCircuitos estado="reposo" :nivel="() => 0" />
                 </div>
                 <p
                     class="font-mono text-xs tracking-[0.6em] text-primary"
@@ -38,7 +31,7 @@ defineProps<{
             </div>
 
             <div
-                class="relative rounded-xl border border-primary/25 bg-card/70 p-6 shadow-[0_0_60px_-20px_rgba(var(--hud-acento-rgb),0.5)] backdrop-blur-sm"
+                class="relative rounded-xl border border-primary/25 bg-hud-superficie/60 p-6 shadow-[0_0_60px_-20px_rgba(var(--hud-acento-rgb),0.5)] backdrop-blur-sm"
             >
                 <!-- Esquinas del marco -->
                 <span

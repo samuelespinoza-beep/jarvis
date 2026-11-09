@@ -45,15 +45,41 @@ function normalizar(texto: string): string {
         .trim();
 }
 
+type Probabilidad = { logprob: number };
+
+/**
+ * Qué tan seguro estuvo el transcriptor (0 a 1), como media geométrica de la
+ * probabilidad de cada pieza. Sin datos devuelve 1, para no descartar nada.
+ */
+export function confianza(probabilidades?: Probabilidad[] | null): number {
+    if (!probabilidades?.length) {
+        return 1;
+    }
+
+    const media =
+        probabilidades.reduce((suma, p) => suma + p.logprob, 0) /
+        probabilidades.length;
+
+    return Math.exp(media);
+}
+
 /**
  * Si lo transcrito es ruido y no algo que el usuario dijo: vacío, sin
  * letras, una muletilla suelta o una de las frases que el modelo inventa
- * con el silencio.
+ * con el silencio, o algo que el transcriptor oyó con muy poca seguridad.
  */
-export function esRuido(texto: string): boolean {
+export function esRuido(
+    texto: string,
+    probabilidades?: Probabilidad[] | null,
+    confianzaMinima = 0,
+): boolean {
     const limpio = normalizar(texto);
 
     if (limpio.replace(/\s/g, '').length < 2) {
+        return true;
+    }
+
+    if (confianza(probabilidades) < confianzaMinima) {
         return true;
     }
 

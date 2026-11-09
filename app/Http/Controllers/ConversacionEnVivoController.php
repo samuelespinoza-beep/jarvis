@@ -101,6 +101,8 @@ class ConversacionEnVivoController extends Controller
                             ],
                             'output' => ['voice' => $voz],
                         ],
+                        // La seguridad de cada palabra transcrita, para descartar lo que inventa con el ruido.
+                        'include' => ['item.input_audio_transcription.logprobs'],
                         'tools' => array_map($this->definicion(...), $this->herramientas($reunion, $conversacionId)),
                     ],
                 ])
@@ -121,6 +123,7 @@ class ConversacionEnVivoController extends Controller
             // Para exigir más al detectar voz mientras el asistente habla (y volver al terminar).
             'deteccion' => $sala ? null : $this->deteccionDeTurnos($config['deteccion']),
             'umbral_hablando' => $config['deteccion']['umbral_hablando'],
+            'confianza_minima' => $config['deteccion']['confianza_minima'],
         ]);
     }
 
@@ -236,12 +239,20 @@ class ConversacionEnVivoController extends Controller
         Conversación por voz en vivo (ahora mismo):
         - Estás hablando por voz con el usuario. Responde como en una conversación: breve (1 a 3 frases,
           salvo que pidan detalle), sin Markdown, listas, símbolos ni direcciones web.
-        - Ante una decisión, di primero tu postura en una frase y el dato más importante que te falta;
+        - Solo ante una decisión o propuesta, di primero tu postura en una frase y el dato más importante que te falta;
           ofrece desarrollar el análisis en vez de soltarlo completo. La directiva anti-complacencia aplica
           igual: hablar breve no es dar la razón.
+        - Ajusta el largo a lo que te dicen. Si cancelan o cierran un tema ("olvídalo", "déjalo", "no importa",
+          "ya está", "gracias"), o solo saludan, responde con una frase muy corta ("Listo.", "De acuerdo.",
+          "¡Hola! ¿En qué te ayudo?") y nada más: no ofrezcas opciones, no resumas lo hablado ni expliques
+          qué harás después.
         - Para buscar en internet usa BuscarEnInternet. Antes de usar una herramienta, avisa en pocas
           palabras ("Un momento, lo reviso").
-        - Si hay enlaces, menciona solo el nombre del sitio: lo conversado queda escrito en el chat.
+        - Cuando la herramienta responda, cuenta lo que encontró sin rodeos: para noticias, di 3 titulares,
+          cortos y en pocas palabras cada uno, y termina con "Los enlaces están en el chat". No opines sobre la
+          búsqueda, no des nivel de confianza ni preguntes por un tema antes de buscar.
+        - Los enlaces que trae una herramienta aparecen escritos solos en el chat: nunca leas direcciones
+          web ni digas "rpp punto pe". Si piden los enlaces, di que ya están en el chat.
         - El chat escrito sigue abierto mientras conversan. Si el usuario quiere mandarte un documento,
           dile que lo adjunte con el clip de la caja de texto y lo envíe; tú lo esperas.
         - Cuando escribe o adjunta algo, primero te llega un aviso de que el chat escrito está respondiendo:
@@ -344,7 +355,7 @@ class ConversacionEnVivoController extends Controller
      * inventa frases como "Gracias."). En modo sala, además, solo si va
      * dirigida al asistente ("Asistente, …") y sin cortarse por su propio eco.
      *
-     * @param  array{tipo: string, umbral: float, umbral_hablando: float, relleno_ms: int, silencio_ms: int, interrumpir: bool}  $deteccion
+     * @param  array{tipo: string, umbral: float, umbral_hablando: float, relleno_ms: int, silencio_ms: int, confianza_minima: float, interrumpir: bool}  $deteccion
      * @return array<string, mixed>
      */
     private function deteccionDeTurnos(array $deteccion, bool $sala = false): array

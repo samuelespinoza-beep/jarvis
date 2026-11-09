@@ -2,6 +2,7 @@
 
 namespace App\Ai\Tools;
 
+use App\Ai\ContenidoExterno;
 use App\Support\Navegador;
 use Dom\Element;
 use Dom\HTMLDocument;
@@ -70,7 +71,7 @@ class LeerPagina implements Tool
             ? $this->texto($documento)
             : $this->enlaces($documento, $urlFinal);
 
-        return implode("\n", $encabezado)."\n\n".$cuerpo;
+        return ContenidoExterno::envolver("la página {$urlFinal}", implode("\n", $encabezado)."\n\n".$cuerpo);
     }
 
     public function schema(JsonSchema $schema): array

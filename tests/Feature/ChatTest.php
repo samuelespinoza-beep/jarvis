@@ -227,6 +227,28 @@ class ChatTest extends TestCase
             ->assertJsonPath('mensajes.2.documento', null);
     }
 
+    public function test_excel_and_powerpoint_files_are_attached_as_documents()
+    {
+        Storage::fake('local');
+        Jarvis::fake(['Zapatos vendió más.', 'La meta son 40 notas diarias.']);
+        $user = User::factory()->create();
+
+        $archivos = [
+            'Ventas.xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Plan 2027.pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        ];
+
+        foreach ($archivos as $nombre => $tipo) {
+            $this->actingAs($user)->post(route('chat.enviar'), [
+                'mensaje' => 'Analiza este archivo.',
+                'documento' => UploadedFile::fake()->create($nombre, 20, $tipo),
+            ])->assertOk()->streamedContent();
+
+            Jarvis::assertPrompted(fn (AgentPrompt $prompt) => $prompt->attachments->first() instanceof StoredDocument
+                && $prompt->attachments->first()->name() === $nombre);
+        }
+    }
+
     public function test_an_image_is_attached_as_an_image_and_can_be_shown_in_the_chat()
     {
         Storage::fake('local');

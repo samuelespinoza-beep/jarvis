@@ -2,6 +2,7 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\ContenidoExterno;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
@@ -53,7 +54,7 @@ class ResumidorReunion implements Agent, HasStructuredOutput
           trató ("tratado"), si se trató solo en parte o sin decisión ("parcial") o si no se trató
           ("no_tratado"), con un comentario breve de lo que se dijo o resolvió. Si no hay agenda, lista vacía.
           Los temas tratados que no estaban en la agenda van igual en las demás secciones.
-        TXT;
+        TXT.ContenidoExterno::REGLA;
     }
 
     public function schema(JsonSchema $schema): array

@@ -18,9 +18,11 @@ defineProps<{
         <li
             v-for="(mensaje, indice) in mensajes"
             :key="mensaje.id ?? indice"
-            class="grid grid-cols-[4rem_1fr] gap-3"
+            class="grid grid-cols-[5.5rem_1fr] gap-3"
         >
-            <span class="font-mono text-xs text-muted-foreground">
+            <span
+                class="font-mono text-xs whitespace-nowrap text-muted-foreground"
+            >
                 {{ mensaje.creado_en ? formatearHora(mensaje.creado_en) : '' }}
             </span>
             <div class="flex min-w-0 flex-col gap-1.5">

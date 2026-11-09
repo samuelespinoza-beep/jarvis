@@ -46,6 +46,17 @@ lint: ## Revisa y corrige el formato de PHP (Pint) y el frontend (lint + formato
 build: ## Compila el frontend para producción (public/build)
 	@npm run build
 
+chrome: ## Abre el Chrome de depuración de Jarvis (puerto 9223; no toca el 9222 del scraper)
+	@echo "Cerrando cualquier ventana de depuración anterior..."
+	@pkill -f "[r]emote-debugging-port=9223" 2>/dev/null; sleep 2; true
+	@echo "Abriendo Chrome de depuración en el puerto 9223..."
+	@setsid google-chrome --remote-debugging-port=9223 --user-data-dir="$$HOME/.chrome-debug-jarvis" --no-first-run --no-default-browser-check </dev/null >/dev/null 2>&1 & disown; \
+	sleep 4; \
+	curl -s http://localhost:9223/json/version >/dev/null 2>&1 && echo "OK: Chrome activo. Navega en esa ventana y pídele a Claude que la lea." || echo "ERROR: Chrome no arrancó"
+
+chrome-stop: ## Cierra solo el Chrome de depuración de Jarvis (no toca tu Chrome normal ni el del scraper)
+	@pkill -f "[r]emote-debugging-port=9223" 2>/dev/null && echo "Ventana de depuración cerrada" || echo "No había ninguna abierta"
+
 instalador: ## Genera los instaladores de Windows, Linux y Mac en dist/ (necesita Docker)
 	@instalador/preparar-app.sh
 	@instalador/linux/empaquetar.sh
@@ -64,4 +75,4 @@ instalador-mac: ## Genera solo la app de Mac (dist/Asistente-IA-*-mac.zip)
 	@instalador/preparar-app.sh
 	@instalador/mac/empaquetar.sh
 
-.PHONY: help dev down clear install migrate fresh test lint build instalador instalador-linux instalador-windows instalador-mac
+.PHONY: help dev down clear install migrate fresh test lint build chrome chrome-stop instalador instalador-linux instalador-windows instalador-mac

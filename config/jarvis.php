@@ -44,7 +44,8 @@ return [
         // limitan upload_max_filesize y post_max_size del php.ini.
         'documento_max_kb' => (int) env('JARVIS_DOCUMENTO_MAX_KB', 10240),
 
-        'documento_formatos' => ['pdf', 'docx', 'txt', 'md', 'csv'],
+        // Excel y PowerPoint también los lee OpenAI tal cual (Claude solo acepta PDF o texto).
+        'documento_formatos' => ['pdf', 'docx', 'xlsx', 'pptx', 'txt', 'md', 'csv'],
 
         'imagen_formatos' => ['jpg', 'jpeg', 'png', 'webp'],
     ],
@@ -72,6 +73,9 @@ return [
             // Voz mínima previa que se guarda y silencio que cierra el turno.
             'relleno_ms' => 300,
             'silencio_ms' => (int) env('JARVIS_CONVERSACION_SILENCIO_MS', 700),
+            // De 0 a 1: qué tan seguro debe estar el transcriptor de lo que oyó. Con ruido inventa
+            // palabras con poca seguridad; si descarta frases reales, bajarlo (0 lo apaga).
+            'confianza_minima' => (float) env('JARVIS_CONVERSACION_CONFIANZA', 0.45),
             // Interrumpirlo hablando, como en ChatGPT: se calla apenas el usuario dice algo ("espera",
             // "gracias"). Si con parlantes se corta solo por su eco, subir umbral_hablando o poner
             // false: el micrófono se cierra mientras habla y se corta con Detener o Esc.

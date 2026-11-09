@@ -4,23 +4,28 @@ import {
     CircleAlert,
     CircleCheck,
     FileText,
+    ListTodo,
     LoaderCircle,
+    MessageSquare,
     Mic,
     Pause,
     Play,
+    Radar,
     RotateCw,
     Square,
+    X,
 } from '@lucide/vue';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { useEventListener } from '@vueuse/core';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
 import { show as verReunion } from '@/actions/App/Http/Controllers/HistorialController';
 import { agenda as actualizarAgenda } from '@/actions/App/Http/Controllers/ReunionController';
 import ChatJarvis from '@/components/jarvis/ChatJarvis.vue';
 import LineaDeTiempoReunion from '@/components/jarvis/LineaDeTiempoReunion.vue';
-import NucleoJarvis from '@/components/jarvis/NucleoJarvis.vue';
 import PreparacionReunion from '@/components/jarvis/PreparacionReunion.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useGrabadora } from '@/composables/useGrabadora';
 import { useLineaDeTiempo } from '@/composables/useLineaDeTiempo';
 import { useOrdenesDeVoz } from '@/composables/useOrdenesDeVoz';
@@ -48,11 +53,65 @@ const props = defineProps<{
 defineOptions({
     layout: {
         breadcrumbs: [{ title: 'Asistente IA', href: jarvis() }],
+        // La página tiene su propia barra (vista, reunión y botón del menú).
+        sinEncabezado: true,
     },
 });
 
 const titulo = ref('');
-const pestana = ref<'reunion' | 'chat'>('reunion');
+
+// Vista del asistente: la conversación (núcleo y último intercambio) o el
+// chat completo. Es la misma conversación; se recuerda en este navegador.
+type Vista = 'conversacion' | 'chat';
+const CLAVE_VISTA = 'asistente-ia.vista';
+
+function leerVista(): Vista {
+    try {
+        return localStorage.getItem(CLAVE_VISTA) === 'chat'
+            ? 'chat'
+            : 'conversacion';
+    } catch {
+        return 'conversacion';
+    }
+}
+
+const vista = ref<Vista>(leerVista());
+
+watch(vista, (actual) => {
+    try {
+        localStorage.setItem(CLAVE_VISTA, actual);
+    } catch {
+        // Sin almacenamiento, la vista elegida dura mientras la página siga abierta.
+    }
+});
+
+const opcionesVista = [
+    { valor: 'conversacion', texto: 'Conversación', icono: Radar },
+    { valor: 'chat', texto: 'Chat', icono: MessageSquare },
+] as const;
+
+// Panel de la reunión (título, agenda, minuto a minuto y acta): se abre a pedido.
+const panelAbierto = ref(false);
+const cerrarPanelBoton = ref<HTMLButtonElement | null>(null);
+let focoAntesDelPanel: HTMLElement | null = null;
+
+async function abrirPanel() {
+    focoAntesDelPanel = document.activeElement as HTMLElement | null;
+    panelAbierto.value = true;
+    await nextTick();
+    cerrarPanelBoton.value?.focus();
+}
+
+function cerrarPanel() {
+    panelAbierto.value = false;
+    focoAntesDelPanel?.focus();
+}
+
+useEventListener(window, 'keydown', (evento: KeyboardEvent) => {
+    if (evento.key === 'Escape' && panelAbierto.value) {
+        cerrarPanel();
+    }
+});
 
 const {
     estado,
@@ -281,7 +340,6 @@ function ejecutarOrden(orden: OrdenVoz) {
 
             break;
         case 'pregunta':
-            pestana.value = 'chat';
             void chat.value?.proponer(orden.texto);
             toast(
                 'Asistente IA: tu pregunta está en el chat. Pulsa Enter para enviarla.',
@@ -380,169 +438,416 @@ watch(
 <template>
     <Head title="Inicio" />
 
-    <div class="flex h-full flex-1 flex-col p-4">
+    <div
+        class="fondo-nucleo flex h-svh min-h-0 flex-col bg-hud-fondo text-hud-texto md:h-[calc(100svh-1rem)] md:rounded-xl"
+    >
+        <header
+            class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3 transition-colors"
+            :class="
+                vista === 'chat' ? 'border-hud-acento/20' : 'border-transparent'
+            "
+        >
+            <SidebarTrigger class="-ml-1 text-hud-suave" />
+            <h1 class="hidden text-sm font-semibold sm:block">Asistente IA</h1>
+
+            <div
+                class="inline-flex rounded-full border border-hud-acento/20 bg-hud-superficie/50 p-0.5"
+                role="group"
+                aria-label="Vista"
+            >
+                <button
+                    v-for="opcion in opcionesVista"
+                    :key="opcion.valor"
+                    type="button"
+                    class="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-colors"
+                    :class="
+                        vista === opcion.valor
+                            ? 'bg-hud-fondo font-medium text-hud-acento-texto shadow-sm'
+                            : 'text-hud-suave hover:text-hud-texto'
+                    "
+                    :aria-pressed="vista === opcion.valor"
+                    :title="
+                        opcion.valor === 'chat'
+                            ? 'Ver todo el chat escrito'
+                            : 'Ver solo la conversación'
+                    "
+                    @click="vista = opcion.valor"
+                >
+                    <component :is="opcion.icono" class="size-3.5" />
+                    <span class="hidden sm:inline">{{ opcion.texto }}</span>
+                </button>
+            </div>
+
+            <div class="flex-1" />
+
+            <Button
+                v-if="!reunionAbierta"
+                :disabled="estado === 'iniciando'"
+                class="rounded-full bg-hud-acento text-hud-sobre-acento hover:bg-hud-acento-fuerte"
+                @click="iniciar"
+            >
+                <LoaderCircle
+                    v-if="estado === 'iniciando'"
+                    class="animate-spin"
+                />
+                <Mic v-else />
+                Empezar reunión
+            </Button>
+
+            <div
+                v-else
+                class="flex items-center gap-2 rounded-full border border-hud-acento/20 py-1 pr-1 pl-3 text-sm"
+            >
+                <span
+                    class="size-2 shrink-0 rounded-full"
+                    :class="
+                        escuchando
+                            ? 'animate-pulse bg-rose-500 motion-reduce:animate-none'
+                            : estado === 'subida-pendiente'
+                              ? 'bg-rose-500'
+                              : 'bg-amber-400'
+                    "
+                    aria-hidden="true"
+                />
+                <span
+                    class="hidden text-hud-suave sm:inline"
+                    aria-live="polite"
+                >
+                    {{ textoEstado }}
+                </span>
+                <span class="font-mono tabular-nums">
+                    {{ formatearTiempo(segundos) }}
+                </span>
+                <button
+                    v-if="estado === 'escuchando' || estado === 'pausando'"
+                    type="button"
+                    class="flex size-8 items-center justify-center rounded-full text-hud-texto hover:bg-hud-superficie disabled:opacity-50"
+                    :disabled="estado === 'pausando'"
+                    aria-label="Pausar"
+                    title="Pausar"
+                    @click="pausar"
+                >
+                    <Pause class="size-4" />
+                </button>
+                <button
+                    v-else-if="estado === 'pausado' || estado === 'reanudando'"
+                    type="button"
+                    class="flex size-8 items-center justify-center rounded-full text-hud-acento-texto hover:bg-hud-superficie disabled:opacity-50"
+                    :disabled="estado === 'reanudando'"
+                    aria-label="Reanudar"
+                    title="Reanudar"
+                    @click="reanudar"
+                >
+                    <Play class="size-4" />
+                </button>
+                <button
+                    v-else-if="estado === 'subida-pendiente'"
+                    type="button"
+                    class="flex size-8 items-center justify-center rounded-full text-hud-acento-texto hover:bg-hud-superficie"
+                    aria-label="Reintentar la subida del audio"
+                    title="Reintentar la subida del audio"
+                    @click="reintentar"
+                >
+                    <RotateCw class="size-4" />
+                </button>
+                <button
+                    v-if="estado !== 'subida-pendiente'"
+                    type="button"
+                    class="flex size-8 items-center justify-center rounded-full text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                    :disabled="estado !== 'escuchando' && estado !== 'pausado'"
+                    aria-label="Terminar reunión"
+                    title="Terminar reunión"
+                    @click="confirmarTerminar"
+                >
+                    <Square class="size-4" />
+                </button>
+            </div>
+
+            <Button
+                variant="outline"
+                class="rounded-full border-hud-acento/20 bg-transparent text-hud-texto hover:bg-hud-superficie"
+                aria-label="Reunión: título, agenda y minuto a minuto"
+                title="Título, agenda y minuto a minuto"
+                @click="abrirPanel"
+            >
+                <ListTodo />
+                <span class="hidden sm:inline">Reunión</span>
+            </Button>
+        </header>
+
         <div
-            class="relative flex flex-1 flex-col overflow-hidden rounded-xl border border-hud-acento/20 bg-hud-fondo text-hud-texto lg:flex-row"
+            v-if="pausaLarga || error || reunionQueEscucha || escuchaEnReposo"
+            class="flex flex-col items-center gap-2 px-4 pt-2 text-center"
+        >
+            <p
+                v-if="pausaLarga && reunion"
+                class="max-w-xl rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-700"
+            >
+                Esta reunión está en pausa desde las
+                {{ formatearHora(reunion.pausada_en ?? reunion.iniciada_en) }}.
+                Si ahora empieza una reunión distinta, primero
+                <strong>termínala</strong> y luego presiona
+                <strong>Empezar reunión</strong>.
+            </p>
+            <p
+                v-if="error"
+                class="flex items-center gap-2 text-sm text-rose-600"
+                role="alert"
+            >
+                <CircleAlert class="size-4 shrink-0" />
+                {{ error }}
+            </p>
+            <p
+                v-if="reunionQueEscucha"
+                class="flex items-center gap-2 text-xs text-hud-suave"
+                :title="
+                    ordenesVoz.aviso.value ??
+                    'Ejemplos: «Asistente, pausa la reunión», «Asistente, reanuda», «Asistente, termina la reunión» o «Asistente, busca en la web…»'
+                "
+            >
+                <span
+                    class="size-1.5 shrink-0 rounded-full"
+                    :class="
+                        ordenesVoz.estado.value === 'activo'
+                            ? 'bg-emerald-400'
+                            : ordenesVoz.estado.value === 'error' ||
+                                ordenesVoz.aviso.value
+                              ? 'bg-rose-400'
+                              : 'animate-pulse bg-amber-400'
+                    "
+                />
+                <template v-if="ordenesVoz.aviso.value">
+                    {{ ordenesVoz.aviso.value }}
+                </template>
+                <template v-else-if="ordenesVoz.estado.value === 'activo'">
+                    Di «Asistente, …» para pausar, reanudar, terminar o
+                    preguntar
+                </template>
+                <template v-else>Activando órdenes de voz…</template>
+            </p>
+            <p v-else-if="escuchaEnReposo" class="text-xs text-hud-suave">
+                Órdenes de voz en reposo por la pausa larga. Usa Reanudar.
+            </p>
+        </div>
+
+        <div class="flex min-h-0 flex-1 flex-col px-4 pt-2 pb-4">
+            <ChatJarvis
+                ref="chat"
+                :vista="vista"
+                :analizador="analizador"
+                :reunion-id="reunionDelChat"
+                :reunion-abierta="
+                    reunionAbierta && reunion?.id === reunionDelChat
+                "
+                :reunion="reunionChat"
+                :acta="acta"
+                :escuchando="escuchando"
+                :documentos="documentos"
+                :dictado-max-segundos="dictadoMaxSegundos"
+                :voces="voces"
+                :preparar-en-vivo="pausarParaEnVivo"
+                :reanudar-en-silencio="reanudarEnSilencio"
+                @salir-de-reunion="reunionDelChat = null"
+                @en-vivo="alCambiarEnVivo"
+                @ver-chat="vista = 'chat'"
+            />
+        </div>
+
+        <!-- Panel de la reunión. Queda montado aunque esté cerrado: así no se
+             pierde lo que se estaba preparando en la agenda. -->
+        <div
+            class="fixed inset-0 z-40 bg-black/20 transition-opacity motion-reduce:transition-none"
+            :class="
+                panelAbierto ? 'opacity-100' : 'pointer-events-none opacity-0'
+            "
+            aria-hidden="true"
+            @click="cerrarPanel"
+        />
+        <aside
+            class="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-hud-acento/20 bg-hud-fondo text-hud-texto shadow-xl transition-[transform,visibility] duration-300 motion-reduce:transition-none"
+            :class="
+                panelAbierto ? 'translate-x-0' : 'invisible translate-x-full'
+            "
+            role="dialog"
+            :aria-modal="panelAbierto"
+            aria-labelledby="titulo-panel-reunion"
         >
             <div
-                class="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(var(--hud-acento-rgb),0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(var(--hud-acento-rgb),0.04)_1px,transparent_1px)] bg-[size:32px_32px]"
-            />
-
-            <section
-                class="relative flex flex-1 flex-col items-center justify-center gap-6 p-6 pt-20"
+                class="flex items-center justify-between border-b border-hud-acento/20 px-5 py-4"
             >
-                <div class="absolute top-4 left-4 z-10">
-                    <Button
-                        v-if="!reunionAbierta"
-                        size="lg"
-                        :disabled="estado === 'iniciando'"
-                        class="bg-hud-acento text-hud-sobre-acento hover:bg-hud-acento-fuerte"
-                        @click="iniciar"
-                    >
-                        <Mic />
-                        Empezar reunión
-                    </Button>
-                    <Button
-                        v-else-if="estado !== 'subida-pendiente'"
-                        size="lg"
-                        variant="destructive"
-                        :disabled="
-                            estado !== 'escuchando' && estado !== 'pausado'
-                        "
-                        @click="confirmarTerminar"
-                    >
-                        <Square />
-                        Terminar reunión
-                    </Button>
-                </div>
+                <h2 id="titulo-panel-reunion" class="text-sm font-semibold">
+                    {{
+                        reunionAbierta
+                            ? estado === 'pausado'
+                                ? 'Reunión en pausa'
+                                : 'Reunión en curso'
+                            : 'Reunión'
+                    }}
+                </h2>
+                <button
+                    ref="cerrarPanelBoton"
+                    type="button"
+                    class="flex size-8 items-center justify-center rounded-full text-hud-suave hover:bg-hud-superficie hover:text-hud-texto"
+                    aria-label="Cerrar panel"
+                    title="Cerrar (Esc)"
+                    @click="cerrarPanel"
+                >
+                    <X class="size-4" />
+                </button>
+            </div>
 
-                <div class="w-full max-w-[min(70vh,520px)]">
-                    <NucleoJarvis
-                        :analizador="analizador"
-                        :activo="escuchando"
-                    />
-                </div>
-
-                <div class="flex flex-col items-center gap-1 text-center">
-                    <p
-                        class="font-mono text-xs tracking-[0.4em] text-hud-acento-texto/80 uppercase"
-                        aria-live="polite"
+            <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
+                <template v-if="!reunionAbierta">
+                    <h3
+                        class="font-mono text-xs tracking-[0.3em] text-hud-acento-texto/80 uppercase"
                     >
-                        {{ textoEstado }}
-                    </p>
-                    <p
-                        class="font-mono text-4xl font-light tabular-nums"
-                        :class="
-                            escuchando
-                                ? 'text-hud-texto'
-                                : reunionAbierta
-                                  ? 'text-hud-texto/70'
-                                  : 'text-hud-texto/40'
-                        "
-                    >
-                        {{ formatearTiempo(reunionAbierta ? segundos : 0) }}
-                    </p>
-                    <p
-                        v-if="reunionAbierta && reunion"
-                        class="max-w-md truncate text-sm text-hud-suave"
-                    >
-                        {{ reunion.titulo || 'Reunión sin título' }} · tiempo
-                        grabado
-                    </p>
-                    <p
-                        v-if="reunionQueEscucha"
-                        class="mt-1 flex items-center gap-2 text-xs text-hud-suave"
-                        :title="
-                            ordenesVoz.aviso.value ??
-                            'Ejemplos: «Asistente, pausa la reunión», «Asistente, reanuda», «Asistente, termina la reunión» o «Asistente, busca en la web…»'
-                        "
-                    >
-                        <span
-                            class="size-1.5 shrink-0 rounded-full"
-                            :class="
-                                ordenesVoz.estado.value === 'activo'
-                                    ? 'bg-emerald-400'
-                                    : ordenesVoz.estado.value === 'error' ||
-                                        ordenesVoz.aviso.value
-                                      ? 'bg-rose-400'
-                                      : 'animate-pulse bg-amber-400'
-                            "
-                        />
-                        <template v-if="ordenesVoz.aviso.value">
-                            {{ ordenesVoz.aviso.value }}
-                        </template>
-                        <template
-                            v-else-if="ordenesVoz.estado.value === 'activo'"
-                        >
-                            Di «Asistente, …» para pausar, reanudar, terminar o
-                            preguntar
-                        </template>
-                        <template v-else>Activando órdenes de voz…</template>
-                    </p>
-                    <p
-                        v-else-if="escuchaEnReposo"
-                        class="mt-1 text-xs text-hud-suave"
-                    >
-                        Órdenes de voz en reposo por la pausa larga. Usa
-                        Reanudar.
-                    </p>
-                </div>
-
-                <div class="flex w-full max-w-md flex-col items-center gap-3">
-                    <div
-                        v-if="pausaLarga && reunion"
-                        class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-center text-sm text-amber-700"
-                    >
-                        Esta reunión está en pausa desde las
-                        {{
-                            formatearHora(
-                                reunion.pausada_en ?? reunion.iniciada_en,
-                            )
-                        }}. Si ahora empieza una reunión distinta, primero
-                        <strong>termínala</strong> y luego presiona
-                        <strong>Empezar reunión</strong>.
-                    </div>
-
+                        Próxima reunión
+                    </h3>
                     <Input
-                        v-if="estado === 'inactivo'"
                         v-model="titulo"
                         placeholder="Título de la reunión (opcional)"
+                        aria-label="Título de la reunión (opcional)"
                         maxlength="255"
+                        :disabled="estado !== 'inactivo'"
                         class="border-hud-acento/30 bg-hud-superficie/30 text-hud-texto placeholder:text-hud-suave/70"
                     />
+                    <PreparacionReunion
+                        v-model:agenda="agenda"
+                        :en-curso="false"
+                        :documentos="documentos"
+                    />
+                </template>
 
-                    <div class="flex flex-wrap justify-center gap-3">
-                        <Button
-                            v-if="
-                                estado === 'escuchando' || estado === 'pausando'
-                            "
-                            size="lg"
-                            variant="outline"
-                            :disabled="estado === 'pausando'"
-                            class="border-hud-acento/40 bg-transparent text-hud-texto hover:bg-hud-superficie"
-                            @click="pausar"
+                <template v-if="reunion && reunionAbierta">
+                    <dl class="grid grid-cols-2 gap-y-2 text-sm">
+                        <dt class="text-hud-suave">Título</dt>
+                        <dd class="truncate text-right">
+                            {{ reunion.titulo || 'Sin título' }}
+                        </dd>
+                        <dt class="text-hud-suave">Inicio</dt>
+                        <dd class="text-right">
+                            {{ formatearHora(reunion.iniciada_en) }}
+                        </dd>
+                        <dt class="text-hud-suave">Grabado</dt>
+                        <dd class="text-right tabular-nums">
+                            {{ formatearTiempo(segundos) }}
+                        </dd>
+                    </dl>
+
+                    <p
+                        v-if="estado === 'pausado'"
+                        class="text-sm text-hud-suave"
+                    >
+                        La reunión sigue abierta. Presiona
+                        <strong class="text-hud-texto">Reanudar</strong>
+                        para seguir grabando en ella o
+                        <strong class="text-hud-texto">Terminar</strong>
+                        para generar el acta.
+                    </p>
+
+                    <LineaDeTiempoReunion
+                        :tramos="tramos"
+                        :grabando="escuchando"
+                    />
+
+                    <PreparacionReunion
+                        v-model:agenda="agenda"
+                        :en-curso="true"
+                        :documentos="documentos"
+                    />
+
+                    <p
+                        v-if="subidasPendientes.length"
+                        class="text-xs"
+                        :class="
+                            subidasPendientes.some((s) => s.estado === 'error')
+                                ? 'text-rose-600'
+                                : 'text-hud-suave'
+                        "
+                    >
+                        {{
+                            subidasPendientes.some((s) => s.estado === 'error')
+                                ? 'No se pudo subir parte del audio.'
+                                : 'Subiendo audio…'
+                        }}
+                    </p>
+                </template>
+
+                <template v-else-if="reunionMostrada">
+                    <hr class="border-hud-acento/20" />
+                    <h3
+                        class="font-mono text-xs tracking-[0.3em] text-hud-acento-texto/80 uppercase"
+                    >
+                        Última reunión
+                    </h3>
+                    <dl class="grid grid-cols-2 gap-y-2 text-sm">
+                        <dt class="text-hud-suave">Título</dt>
+                        <dd class="truncate text-right">
+                            {{ reunionMostrada.titulo || 'Sin título' }}
+                        </dd>
+                        <dt class="text-hud-suave">Inicio</dt>
+                        <dd class="text-right">
+                            {{ formatearHora(reunionMostrada.iniciada_en) }}
+                        </dd>
+                        <dt class="text-hud-suave">Duración</dt>
+                        <dd class="text-right tabular-nums">
+                            {{
+                                formatearTiempo(
+                                    reunionMostrada.duracion_segundos ?? 0,
+                                )
+                            }}
+                        </dd>
+                    </dl>
+
+                    <div
+                        v-if="reunionMostrada.estado === 'procesando'"
+                        class="flex flex-col gap-3 rounded-lg border border-hud-acento/30 bg-hud-superficie/30 p-4 text-sm"
+                        aria-live="polite"
+                    >
+                        <p class="flex items-center gap-2 font-medium">
+                            <LoaderCircle class="size-4 animate-spin" />
+                            <template
+                                v-if="reunionMostrada.transcripcion_lista"
+                            >
+                                Generando el resumen…
+                            </template>
+                            <template v-else>
+                                Transcribiendo {{ transcritos }} de
+                                {{ fragmentos.length || '…' }}
+                            </template>
+                        </p>
+                        <div
+                            v-if="!reunionMostrada.transcripcion_lista"
+                            class="h-1 overflow-hidden rounded bg-hud-superficie"
                         >
-                            <Pause />
-                            Pausar
-                        </Button>
-                        <Button
-                            v-if="
-                                estado === 'pausado' || estado === 'reanudando'
-                            "
-                            size="lg"
-                            :disabled="estado === 'reanudando'"
-                            class="bg-hud-acento text-hud-sobre-acento hover:bg-hud-acento-fuerte"
-                            @click="reanudar"
+                            <div
+                                class="h-full bg-hud-acento transition-all"
+                                :style="{
+                                    width: `${fragmentos.length ? (transcritos / fragmentos.length) * 100 : 0}%`,
+                                }"
+                            />
+                        </div>
+                    </div>
+
+                    <div
+                        v-else-if="reunionMostrada.estado === 'error'"
+                        class="flex flex-col gap-3 rounded-lg border border-rose-300 bg-rose-50 p-4 text-sm"
+                    >
+                        <p
+                            class="flex items-center gap-2 font-medium text-rose-600"
                         >
-                            <Play />
-                            Reanudar
-                        </Button>
+                            <CircleAlert class="size-4" />
+                            {{
+                                reunionMostrada.transcripcion_lista
+                                    ? 'No se pudo generar el resumen'
+                                    : 'Algunos fragmentos no se pudieron transcribir'
+                            }}
+                        </p>
                         <Button
-                            v-if="estado === 'subida-pendiente'"
-                            size="lg"
-                            variant="outline"
-                            class="border-hud-acento/40 bg-transparent text-hud-texto hover:bg-hud-superficie"
-                            @click="reintentar"
+                            size="sm"
+                            :disabled="reprocesando"
+                            class="self-start bg-hud-acento text-hud-sobre-acento hover:bg-hud-acento-fuerte"
+                            @click="reprocesar"
                         >
                             <RotateCw />
                             Reintentar
@@ -550,326 +855,88 @@ watch(
                     </div>
 
                     <p
-                        v-if="error"
-                        class="flex items-center gap-2 text-sm text-rose-600"
-                        role="alert"
+                        v-else-if="reunionMostrada.estado === 'completada'"
+                        class="flex items-center gap-2 text-sm font-medium text-emerald-600"
                     >
-                        <CircleAlert class="size-4 shrink-0" />
-                        {{ error }}
+                        <CircleCheck class="size-4" />
+                        Acta lista
                     </p>
-                </div>
-            </section>
 
-            <aside
-                class="relative flex w-full flex-col gap-4 border-t border-hud-acento/20 bg-hud-superficie/10 p-5 lg:w-[32rem] lg:border-t-0 lg:border-l xl:w-[38rem] 2xl:w-[44rem]"
-            >
-                <div
-                    class="flex gap-1 border-b border-hud-acento/20"
-                    role="tablist"
-                >
-                    <button
-                        v-for="opcion in [
-                            { valor: 'reunion', texto: 'Reunión' },
-                            { valor: 'chat', texto: 'Chat' },
-                        ] as const"
-                        :key="opcion.valor"
-                        type="button"
-                        role="tab"
-                        :aria-selected="pestana === opcion.valor"
-                        class="-mb-px border-b-2 px-3 py-2 font-mono text-xs tracking-[0.3em] uppercase transition-colors"
-                        :class="
-                            pestana === opcion.valor
-                                ? 'border-hud-acento text-hud-acento-texto'
-                                : 'border-transparent text-hud-suave hover:text-hud-suave/80'
+                    <ul
+                        v-if="
+                            reunionMostrada.estado !== 'completada' &&
+                            fragmentos.length
                         "
-                        @click="pestana = opcion.valor"
+                        class="flex flex-col gap-1.5 text-sm"
                     >
-                        {{ opcion.texto }}
-                    </button>
-                </div>
-
-                <ChatJarvis
-                    ref="chat"
-                    v-show="pestana === 'chat'"
-                    :reunion-id="reunionDelChat"
-                    :reunion-abierta="
-                        reunionAbierta && reunion?.id === reunionDelChat
-                    "
-                    :reunion="reunionChat"
-                    :acta="acta"
-                    :escuchando="escuchando"
-                    :documentos="documentos"
-                    :dictado-max-segundos="dictadoMaxSegundos"
-                    :voces="voces"
-                    @salir-de-reunion="reunionDelChat = null"
-                    :preparar-en-vivo="pausarParaEnVivo"
-                    :reanudar-en-silencio="reanudarEnSilencio"
-                    @en-vivo="alCambiarEnVivo"
-                />
-
-                <div
-                    v-show="pestana === 'reunion'"
-                    class="-mr-2 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-2"
-                >
-                    <template v-if="!reunionAbierta">
-                        <h2
-                            class="font-mono text-xs tracking-[0.3em] text-hud-acento-texto/80 uppercase"
+                        <li
+                            v-for="fragmento in fragmentos"
+                            :key="fragmento.orden"
+                            class="flex items-center justify-between gap-2 rounded border border-hud-acento/10 bg-hud-superficie/20 px-3 py-1.5"
+                            :title="fragmento.error ?? undefined"
                         >
-                            Próxima reunión
-                        </h2>
-                        <PreparacionReunion
-                            v-model:agenda="agenda"
-                            :en-curso="false"
-                            :documentos="documentos"
-                        />
-                        <hr class="border-hud-acento/20" />
-                    </template>
+                            <span class="font-mono">
+                                #{{ String(fragmento.orden).padStart(2, '0') }}
+                            </span>
+                            <span
+                                class="text-xs"
+                                :class="colorFragmento[fragmento.estado]"
+                            >
+                                {{ textoFragmento[fragmento.estado] }}
+                            </span>
+                        </li>
+                    </ul>
 
-                    <h2
-                        class="font-mono text-xs tracking-[0.3em] text-hud-acento-texto/80 uppercase"
+                    <div
+                        v-if="
+                            resumen && reunionMostrada.estado === 'completada'
+                        "
+                        class="flex flex-col gap-3 text-sm"
                     >
-                        {{
-                            reunionAbierta
-                                ? estado === 'pausado'
-                                    ? 'Reunión en pausa'
-                                    : 'Reunión en curso'
-                                : reunionMostrada
-                                  ? 'Última reunión'
-                                  : 'Reunión'
-                        }}
-                    </h2>
-
-                    <template v-if="reunion && reunionAbierta">
-                        <dl class="grid grid-cols-2 gap-y-2 text-sm">
-                            <dt class="text-hud-suave">Título</dt>
-                            <dd class="truncate text-right">
-                                {{ reunion.titulo || 'Sin título' }}
-                            </dd>
-                            <dt class="text-hud-suave">Inicio</dt>
-                            <dd class="text-right">
-                                {{ formatearHora(reunion.iniciada_en) }}
-                            </dd>
-                            <dt class="text-hud-suave">Grabado</dt>
-                            <dd class="text-right tabular-nums">
-                                {{ formatearTiempo(segundos) }}
-                            </dd>
-                        </dl>
-
-                        <p
-                            v-if="estado === 'pausado'"
-                            class="text-sm text-hud-suave"
-                        >
-                            La reunión sigue abierta. Presiona
-                            <strong class="text-hud-texto">Reanudar</strong>
-                            para seguir grabando en ella o
-                            <strong class="text-hud-texto"
-                                >Terminar reunión</strong
-                            >
-                            para generar el acta.
+                        <p class="leading-relaxed text-hud-texto/90">
+                            {{ resumen.resumen_ejecutivo }}
                         </p>
-
-                        <LineaDeTiempoReunion
-                            :tramos="tramos"
-                            :grabando="escuchando"
-                        />
-
-                        <PreparacionReunion
-                            v-model:agenda="agenda"
-                            :en-curso="true"
-                            :documentos="documentos"
-                        />
-
-                        <p
-                            v-if="subidasPendientes.length"
-                            class="text-xs"
-                            :class="
-                                subidasPendientes.some(
-                                    (s) => s.estado === 'error',
-                                )
-                                    ? 'text-rose-600'
-                                    : 'text-hud-suave'
-                            "
-                        >
-                            {{
-                                subidasPendientes.some(
-                                    (s) => s.estado === 'error',
-                                )
-                                    ? 'No se pudo subir parte del audio.'
-                                    : 'Subiendo audio…'
-                            }}
-                        </p>
-                    </template>
-
-                    <template v-else-if="reunionMostrada">
-                        <dl class="grid grid-cols-2 gap-y-2 text-sm">
-                            <dt class="text-hud-suave">Título</dt>
-                            <dd class="truncate text-right">
-                                {{ reunionMostrada.titulo || 'Sin título' }}
-                            </dd>
-                            <dt class="text-hud-suave">Inicio</dt>
-                            <dd class="text-right">
-                                {{ formatearHora(reunionMostrada.iniciada_en) }}
-                            </dd>
-                            <dt class="text-hud-suave">Duración</dt>
-                            <dd class="text-right tabular-nums">
-                                {{
-                                    formatearTiempo(
-                                        reunionMostrada.duracion_segundos ?? 0,
-                                    )
-                                }}
-                            </dd>
-                        </dl>
-
-                        <div
-                            v-if="reunionMostrada.estado === 'procesando'"
-                            class="flex flex-col gap-3 rounded-lg border border-hud-acento/30 bg-hud-superficie/30 p-4 text-sm"
-                            aria-live="polite"
-                        >
-                            <p class="flex items-center gap-2 font-medium">
-                                <LoaderCircle class="size-4 animate-spin" />
-                                <template
-                                    v-if="reunionMostrada.transcripcion_lista"
-                                >
-                                    Generando el resumen…
-                                </template>
-                                <template v-else>
-                                    Transcribiendo {{ transcritos }} de
-                                    {{ fragmentos.length || '…' }}
-                                </template>
-                            </p>
-                            <div
-                                v-if="!reunionMostrada.transcripcion_lista"
-                                class="h-1 overflow-hidden rounded bg-hud-superficie"
-                            >
-                                <div
-                                    class="h-full bg-hud-acento transition-all"
-                                    :style="{
-                                        width: `${fragmentos.length ? (transcritos / fragmentos.length) * 100 : 0}%`,
-                                    }"
-                                />
-                            </div>
-                        </div>
-
-                        <div
-                            v-else-if="reunionMostrada.estado === 'error'"
-                            class="flex flex-col gap-3 rounded-lg border border-rose-300 bg-rose-50 p-4 text-sm"
-                        >
-                            <p
-                                class="flex items-center gap-2 font-medium text-rose-600"
-                            >
-                                <CircleAlert class="size-4" />
-                                {{
-                                    reunionMostrada.transcripcion_lista
-                                        ? 'No se pudo generar el resumen'
-                                        : 'Algunos fragmentos no se pudieron transcribir'
-                                }}
-                            </p>
-                            <Button
-                                size="sm"
-                                :disabled="reprocesando"
-                                class="self-start bg-hud-acento text-hud-sobre-acento hover:bg-hud-acento-fuerte"
-                                @click="reprocesar"
-                            >
-                                <RotateCw />
-                                Reintentar
-                            </Button>
-                        </div>
-
-                        <p
-                            v-else-if="reunionMostrada.estado === 'completada'"
-                            class="flex items-center gap-2 text-sm font-medium text-emerald-600"
-                        >
-                            <CircleCheck class="size-4" />
-                            Acta lista
-                        </p>
-
                         <ul
-                            v-if="
-                                reunionMostrada.estado !== 'completada' &&
-                                fragmentos.length
-                            "
-                            class="flex flex-col gap-1.5 text-sm"
+                            v-if="resumen.temas_tratados.length"
+                            class="flex flex-wrap gap-1.5"
                         >
                             <li
-                                v-for="fragmento in fragmentos"
-                                :key="fragmento.orden"
-                                class="flex items-center justify-between gap-2 rounded border border-hud-acento/10 bg-hud-superficie/20 px-3 py-1.5"
-                                :title="fragmento.error ?? undefined"
+                                v-for="tema in resumen.temas_tratados"
+                                :key="tema"
+                                class="rounded-full border border-hud-acento/30 px-2.5 py-0.5 text-xs text-hud-texto/80"
                             >
-                                <span class="font-mono">
-                                    #{{
-                                        String(fragmento.orden).padStart(2, '0')
-                                    }}
-                                </span>
-                                <span
-                                    class="text-xs"
-                                    :class="colorFragmento[fragmento.estado]"
-                                >
-                                    {{ textoFragmento[fragmento.estado] }}
-                                </span>
+                                {{ tema }}
                             </li>
                         </ul>
+                        <p class="text-xs text-hud-suave">
+                            {{ resumen.acuerdos.length }} acuerdo(s) ·
+                            {{ resumen.pendientes.length }} pendiente(s)
+                        </p>
+                    </div>
 
-                        <div
-                            v-if="
-                                resumen &&
-                                reunionMostrada.estado === 'completada'
-                            "
-                            class="flex flex-col gap-3 text-sm"
-                        >
-                            <p class="leading-relaxed text-hud-texto/90">
-                                {{ resumen.resumen_ejecutivo }}
-                            </p>
-                            <ul
-                                v-if="resumen.temas_tratados.length"
-                                class="flex flex-wrap gap-1.5"
-                            >
-                                <li
-                                    v-for="tema in resumen.temas_tratados"
-                                    :key="tema"
-                                    class="rounded-full border border-hud-acento/30 px-2.5 py-0.5 text-xs text-hud-texto/80"
-                                >
-                                    {{ tema }}
-                                </li>
-                            </ul>
-                            <p class="text-xs text-hud-suave">
-                                {{ resumen.acuerdos.length }} acuerdo(s) ·
-                                {{ resumen.pendientes.length }} pendiente(s)
-                            </p>
-                        </div>
+                    <Button
+                        v-if="reunionMostrada.estado !== 'procesando'"
+                        size="sm"
+                        variant="outline"
+                        class="self-start border-hud-acento/40 bg-transparent text-hud-texto hover:bg-hud-superficie"
+                        as-child
+                    >
+                        <Link :href="verReunion(reunionMostrada.id)">
+                            <FileText />
+                            Ver acta completa
+                        </Link>
+                    </Button>
 
-                        <Button
-                            v-if="reunionMostrada.estado !== 'procesando'"
-                            size="sm"
-                            variant="outline"
-                            class="self-start border-hud-acento/40 bg-transparent text-hud-texto hover:bg-hud-superficie"
-                            as-child
-                        >
-                            <Link :href="verReunion(reunionMostrada.id)">
-                                <FileText />
-                                Ver acta completa
-                            </Link>
-                        </Button>
-
-                        <LineaDeTiempoReunion
-                            v-if="
-                                reunionDelChat === reunionMostrada.id &&
-                                tramos.length
-                            "
-                            :tramos="tramos"
-                            :grabando="false"
-                        />
-                    </template>
-
-                    <p v-else class="text-sm text-hud-suave">
-                        Presiona
-                        <strong class="text-hud-texto">Empezar reunión</strong>
-                        al iniciar y
-                        <strong class="text-hud-texto">Terminar reunión</strong>
-                        al finalizar.
-                    </p>
-                </div>
-            </aside>
-        </div>
+                    <LineaDeTiempoReunion
+                        v-if="
+                            reunionDelChat === reunionMostrada.id &&
+                            tramos.length
+                        "
+                        :tramos="tramos"
+                        :grabando="false"
+                    />
+                </template>
+            </div>
+        </aside>
     </div>
 </template>

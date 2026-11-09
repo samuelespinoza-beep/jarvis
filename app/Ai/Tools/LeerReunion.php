@@ -2,6 +2,7 @@
 
 namespace App\Ai\Tools;
 
+use App\Ai\ContenidoExterno;
 use App\Models\Reunion;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Str;
@@ -55,7 +56,7 @@ class LeerReunion implements Tool
                 .($chat !== '' ? Str::limit($chat, self::MAX_CARACTERES_CHAT) : 'No se usó el chat.');
         }
 
-        return implode("\n", $partes);
+        return ContenidoExterno::envolver('la reunión', implode("\n", $partes));
     }
 
     private function documentos(Reunion $reunion): string

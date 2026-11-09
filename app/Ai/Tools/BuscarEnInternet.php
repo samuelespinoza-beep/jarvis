@@ -3,6 +3,7 @@
 namespace App\Ai\Tools;
 
 use App\Ai\Agents\BuscadorWeb;
+use App\Ai\ContenidoExterno;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
@@ -22,9 +23,11 @@ class BuscarEnInternet implements Tool
 
     public function handle(Request $request): Stringable|string
     {
-        return (new BuscadorWeb)
+        $resultado = (new BuscadorWeb)
             ->prompt($request->string('consulta')->toString(), model: config('jarvis.chat.modelo'))
             ->text;
+
+        return ContenidoExterno::envolver('la búsqueda web', $resultado);
     }
 
     public function schema(JsonSchema $schema): array

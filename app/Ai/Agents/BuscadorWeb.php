@@ -2,6 +2,7 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\ContenidoExterno;
 use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
@@ -28,9 +29,10 @@ class BuscadorWeb implements Agent, HasTools
         return <<<TXT
         Buscas en internet y respondes en español. Hoy es {$hoy} (Lima, Perú).
         - Responde con un resumen breve (3 a 6 frases) con los datos concretos que encontraste.
-        - Al final indica las fuentes: nombre del sitio y enlace.
+        - Al final, las fuentes: una por línea, con el enlace directo a la nota o página (no a la portada ni
+          a una sección), así: "- Titular de la nota — https://…". Sin Markdown en esas líneas.
         - Si no encuentras nada confiable, dilo. No inventes cifras ni noticias.
-        TXT;
+        TXT.ContenidoExterno::REGLA;
     }
 
     public function tools(): iterable

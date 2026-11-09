@@ -2,6 +2,7 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\ContenidoExterno;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Attributes\Timeout;
 use Laravel\Ai\Contracts\Agent;
@@ -45,7 +46,7 @@ class GeneradorAgenda implements Agent, HasStructuredOutput
         - Máximo {$maxPuntos} puntos.
         - Si el contenido no parece una agenda o no se puede leer, devuelve la lista vacía y explica en
           "aviso" qué pasó. Si todo salió bien, "aviso" es null. Si algo no se leía bien, menciónalo en "aviso".
-        TXT;
+        TXT.ContenidoExterno::REGLA;
     }
 
     public function schema(JsonSchema $schema): array

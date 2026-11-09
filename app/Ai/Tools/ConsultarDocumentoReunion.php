@@ -3,6 +3,7 @@
 namespace App\Ai\Tools;
 
 use App\Ai\Agents\LectorDocumento;
+use App\Ai\ContenidoExterno;
 use App\Models\Reunion;
 use App\Support\DocumentoChat;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -18,7 +19,7 @@ class ConsultarDocumentoReunion implements Tool
 {
     public function description(): Stringable|string
     {
-        return 'Lee un documento (PDF, Word, etc.) o una imagen adjuntada en el chat de una reunión y responde una pregunta '
+        return 'Lee un documento (PDF, Word, Excel, PowerPoint, etc.) o una imagen adjuntada en el chat de una reunión y responde una pregunta '
             .'sobre él. Usa LeerReunion para ver los documentos de una reunión y su "archivo". Escribe la '
             .'pregunta completa, o pide un resumen si quieren revisarlo en general.';
     }
@@ -45,7 +46,7 @@ class ConsultarDocumentoReunion implements Tool
 
         $reunion->increment('costo_tokens', $respuesta->usage->inputTokens + $respuesta->usage->outputTokens);
 
-        return "Documento «{$documento['name']}»:\n{$respuesta->text}";
+        return ContenidoExterno::envolver("el documento «{$documento['name']}»", $respuesta->text);
     }
 
     public function schema(JsonSchema $schema): array

@@ -8,6 +8,7 @@ import {
 } from '@/actions/App/Http/Controllers/ConversacionEnVivoController';
 import { ACTIVIDADES } from '@/composables/useChat';
 import { interpretarOrdenVoz } from '@/lib/ordenesVoz';
+import { enlacesDe } from '@/lib/enlacesVoz';
 import { esRuido } from '@/lib/ruidoVoz';
 import { tokenXsrf } from '@/lib/xsrf';
 
@@ -33,6 +34,7 @@ type EventoRealtime = {
     item_id?: string;
     delta?: string;
     transcript?: string;
+    logprobs?: { logprob: number }[] | null;
     call_id?: string;
     name?: string;
     arguments?: string;
@@ -108,6 +110,8 @@ export function useConversacionEnVivo(
     // Detección de voz de la sesión; mientras el asistente habla se le sube el
     // umbral, para que lo interrumpa la voz del usuario y no el eco de los parlantes.
     let deteccion: Record<string, unknown> | null = null;
+    // Por debajo de esta seguridad del transcriptor, lo oído se toma como ruido.
+    let confianzaMinima = 0;
     let umbralHablando = 0.85;
     let umbralSubido = false;
     let finDeVoz: number | undefined;
@@ -120,6 +124,10 @@ export function useConversacionEnVivo(
     let parlante: HTMLAudioElement | null = null;
     let opciones: Opciones | null = null;
     let herramientasPendientes = 0;
+    // Nivel de la voz (micrófono y voz del asistente), para animar el núcleo.
+    let contextoAudio: AudioContext | null = null;
+    const analizadores: AnalyserNode[] = [];
+    let muestras = new Uint8Array(0);
     // Pedir una respuesta mientras hay otra en curso da error: se espera a que termine.
     let respuestaEnCurso = false;
     let respuestaPendiente = false;
@@ -512,6 +520,43 @@ export function useConversacionEnVivo(
         }
     }
 
+    function medirNivel(flujo: MediaStream) {
+        try {
+            contextoAudio ??= new AudioContext();
+            void contextoAudio.resume();
+            const analizador = contextoAudio.createAnalyser();
+            analizador.fftSize = 512;
+            analizador.smoothingTimeConstant = 0.6;
+            contextoAudio.createMediaStreamSource(flujo).connect(analizador);
+            analizadores.push(analizador);
+        } catch {
+            // Sin nivel de voz el núcleo igual cambia según el estado.
+        }
+    }
+
+    /** Volumen actual (0 a 1) de lo que se oye: el usuario o el asistente. */
+    function nivelVoz(): number {
+        let maximo = 0;
+
+        for (const analizador of analizadores) {
+            if (muestras.length !== analizador.fftSize) {
+                muestras = new Uint8Array(analizador.fftSize);
+            }
+
+            analizador.getByteTimeDomainData(muestras);
+            let suma = 0;
+
+            for (const valor of muestras) {
+                const x = (valor - 128) / 128;
+                suma += x * x;
+            }
+
+            maximo = Math.max(maximo, Math.sqrt(suma / muestras.length));
+        }
+
+        return Math.min(1, maximo * 4);
+    }
+
     async function usarHerramienta(evento: EventoRealtime) {
         herramientasPendientes++;
         estado.value = 'pensando';
@@ -538,6 +583,15 @@ export function useConversacionEnVivo(
 
         if (numeroSesion !== sesion) {
             return;
+        }
+
+        // Los enlaces quedan escritos en el chat; la voz solo dice los titulares.
+        const enlaces = enlacesDe(evento.name, resultado);
+
+        if (enlaces) {
+            const escrito = mensaje(`enlaces-${evento.call_id}`, 'jarvis');
+            escrito.contenido = enlaces;
+            terminoFrase(escrito.id);
         }
 
         enviar({
@@ -595,7 +649,7 @@ export function useConversacionEnVivo(
                     const texto = (evento.transcript ?? '').trim();
 
                     // Un golpe, eco o frase inventada con el ruido no queda ni se responde.
-                    if (esRuido(texto)) {
+                    if (esRuido(texto, evento.logprobs, confianzaMinima)) {
                         quitarMensaje(evento.item_id);
                         borrarItem(evento.item_id);
                     } else {
@@ -734,6 +788,9 @@ export function useConversacionEnVivo(
         canal?.close();
         conexion?.close();
         microfono?.getTracks().forEach((pista) => pista.stop());
+        analizadores.length = 0;
+        void contextoAudio?.close();
+        contextoAudio = null;
 
         if (parlante) {
             parlante.pause();
@@ -795,11 +852,13 @@ export function useConversacionEnVivo(
                 modo: ModoEnVivo;
                 deteccion: Record<string, unknown> | null;
                 umbral_hablando: number;
+                confianza_minima?: number;
             }>(respuesta);
             const { llave, minutos_inactividad, interrumpir, modo } =
                 datosSesion;
             deteccion = datosSesion.deteccion;
             umbralHablando = datosSesion.umbral_hablando;
+            confianzaMinima = datosSesion.confianza_minima ?? 0;
             minutosInactividad = minutos_inactividad;
             interrumpible.value = interrumpir;
             sala.value = modo === 'sala';
@@ -815,9 +874,11 @@ export function useConversacionEnVivo(
             pc.ontrack = (evento) => {
                 if (parlante) {
                     parlante.srcObject = evento.streams[0];
+                    medirNivel(evento.streams[0]);
                 }
             };
             emisor = pc.addTrack(microfono.getAudioTracks()[0]);
+            medirNivel(microfono);
             pc.onconnectionstatechange = () => {
                 if (
                     numeroSesion === sesion &&
@@ -1005,6 +1066,7 @@ export function useConversacionEnVivo(
     return {
         estado,
         actividad,
+        nivelVoz,
         mensajes,
         error,
         iniciar,
